@@ -6,6 +6,7 @@ import java.util.Date;
 import java.util.List;
 
 public class PullRequestData {
+
     public int number;
     public String state;
     public Date created_at;
@@ -13,18 +14,18 @@ public class PullRequestData {
     public Ref base;
     public UserData user;
 
+    private List<CommentData> commentList = new ArrayList<>();
+
     public class Ref {
         public String ref;
         public RepoData repo;
     }
 
-    private List<CommentData> comments = new ArrayList<>();
-
     public void addComment(CommentData comment) {
-        comments.add(comment);
+        commentList.add(comment);
     }
 
-    public List<CommentData> getComments() {
-        return Collections.unmodifiableList(comments);
+    public List<CommentData> getCommentList() {
+        return Collections.unmodifiableList(commentList);
     }
 }

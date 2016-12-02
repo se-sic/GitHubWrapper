@@ -7,15 +7,14 @@ import java.util.List;
 public class IssueData {
     public int number;
     public UserData user;
-    public String comments_url;
 
-    private List<CommentData> comments = new ArrayList<>();
+    private List<CommentData> commentsList = new ArrayList<>();
 
     public void addComment(CommentData comment) {
-        comments.add(comment);
+        commentsList.add(comment);
     }
 
-    public List<CommentData> getComments() {
-        return Collections.unmodifiableList(comments);
+    public List<CommentData> getCommentsList() {
+        return Collections.unmodifiableList(commentsList);
     }
 }
