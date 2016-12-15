@@ -17,9 +17,11 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventDataDeserializer;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
 import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
@@ -42,6 +44,8 @@ public class GitHubRepository extends Repository {
     private final GitWrapper git;
     private final File dir;
 
+    private Gson gson;
+
     /**
      * Create a wrapper around a (local) repository with additional information about Github hosted repositories.
      *
@@ -60,6 +64,10 @@ public class GitHubRepository extends Repository {
         this.git = git;
         dir = repo.getDir();
         this.oauthToken = oauthToken;
+
+        GsonBuilder gb = new GsonBuilder();
+        gb.registerTypeAdapter(EventData.class, new EventDataDeserializer());
+        gson = gb.create();
     }
 
     /**
@@ -69,7 +77,7 @@ public class GitHubRepository extends Repository {
      */
     public Optional<List<PullRequest>> getPullRequests() {
         return getJSONReaderFromURL("/pulls?per_page=100&state=all").map(reader -> {
-            ArrayList<PullRequestData> data = new Gson().fromJson(reader, new TypeToken<ArrayList<PullRequestData>>() {}.getType());
+            ArrayList<PullRequestData> data = gson.fromJson(reader, new TypeToken<ArrayList<PullRequestData>>() {}.getType());
             return data.stream().filter(pr -> !pr.state.equals("closed")).map(pr ->
                     new PullRequest(this, pr.head.ref, pr.head.repo.full_name + "/" + pr.number,
                             pr.head.repo.html_url, pr.state, repo.getBranch(pr.base.ref).get())
@@ -84,8 +92,7 @@ public class GitHubRepository extends Repository {
      */
     public Optional<List<IssueData>> getIssues() {
         return getJSONReaderFromURL("/issues?per_page=100&state=all").map(reader -> {
-
-            ArrayList<IssueData> data = new Gson().fromJson(reader, new TypeToken<ArrayList<IssueData>>() {}.getType());
+            ArrayList<IssueData> data = gson.fromJson(reader, new TypeToken<ArrayList<IssueData>>() {}.getType());
             data.forEach(issue -> {
                 Optional<List<CommentData>> comments = getComments(issue);
                 Optional<List<EventData>> events = getEvents(issue);
@@ -106,7 +113,7 @@ public class GitHubRepository extends Repository {
      */
     Optional<List<EventData>> getEvents(IssueData issue) {
         return getJSONReaderFromURL("/issues/" + issue.number + "/events?per_page=100").map(reader->
-                new Gson().fromJson(reader, new TypeToken<ArrayList<EventData>>() {}.getType())
+                gson.fromJson(reader, new TypeToken<ArrayList<EventData>>() {}.getType())
         );
     }
 
@@ -119,7 +126,7 @@ public class GitHubRepository extends Repository {
      */
     Optional<List<CommentData>> getComments(IssueData issue) {
         return getJSONReaderFromURL("/issues/" + issue.number + "/comments?per_page=100&state=all").map(reader ->
-                new Gson().fromJson(reader, new TypeToken<ArrayList<CommentData>>() {}.getType())
+                gson.fromJson(reader, new TypeToken<ArrayList<CommentData>>() {}.getType())
         );
     }
 
