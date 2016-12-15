@@ -6,7 +6,7 @@ import com.google.gson.annotations.SerializedName;
 
 public class EventData {
 
-    @SerializedName("actor")
+    @SerializedName(value = "user", alternate = {"actor"})
     public UserData user;
     public Date created_at;
     public String event;

@@ -2,12 +2,15 @@ package de.uni_passau.fim.heck.githubinterface.datadefinitions;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 
 public class IssueData {
 
     public int number;
     public UserData user;
+    public Date created_at;
+    public Date closed_at;
 
     private List<CommentData> commentsList = new ArrayList<>();
     private List<EventData> eventsList = new ArrayList<>();
