@@ -27,7 +27,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventDataDeserializer;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
 import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
@@ -39,6 +38,7 @@ import de.uni_passau.fim.seibt.gitwrapper.repo.MergeConflict;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Reference;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Repository;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Status;
+import io.gsonfire.GsonFireBuilder;
 
 public class GitHubRepository extends Repository {
 
@@ -71,7 +71,9 @@ public class GitHubRepository extends Repository {
         dir = repo.getDir();
         this.oauthToken = oauthToken;
 
-        GsonBuilder gb = new GsonBuilder();
+        GsonFireBuilder gfb = new GsonFireBuilder();
+        gfb.registerPostProcessor(IssueData.class, new IssueDataPostprocessor(this));
+        GsonBuilder gb = gfb.createGsonBuilder();
         gb.registerTypeAdapter(EventData.class, new EventDataDeserializer());
         gson = gb.create();
     }
@@ -94,19 +96,18 @@ public class GitHubRepository extends Repository {
     /**
      * Gets a list of Issues.
      *
+     * @param includePullRequests
+     *         if <code>true</code>, will include pull requests as well
      * @return optionally a list of IssueData or an empty Optional if an error occurred
      */
-    public Optional<List<IssueData>> getIssues() {
+    public Optional<List<IssueData>> getIssues(boolean includePullRequests) {
         return getJSONStringFromURL("/issues?state=all").map(json -> {
             ArrayList<IssueData> data = gson.fromJson(json, new TypeToken<ArrayList<IssueData>>() {}.getType());
-            data.forEach(issue -> {
-                Optional<List<CommentData>> comments = getComments(issue);
-                Optional<List<EventData>> events = getEvents(issue);
-
-                comments.ifPresent(list -> list.forEach(issue::addComment));
-                events.ifPresent(list -> list.forEach(issue::addEvent));
-            });
-            return data;
+            if (!includePullRequests) {
+                return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
+            } else {
+                return data;
+            }
         });
     }
 

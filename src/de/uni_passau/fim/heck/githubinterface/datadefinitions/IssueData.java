@@ -9,8 +9,10 @@ public class IssueData {
 
     public int number;
     public UserData user;
+    public String state;
     public Date created_at;
     public Date closed_at;
+    public boolean isPullRequest;
 
     private List<CommentData> commentsList = new ArrayList<>();
     private List<EventData> eventsList = new ArrayList<>();
