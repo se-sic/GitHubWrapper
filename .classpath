@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry path="bin" kind="output"/>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.8/"/>
+	<classpathentry kind="src" path="/GitWrapper"/>
+	<classpathentry sourcepath="C:/Users/Florian Heck/.gradle/caches/modules-2/files-2.1/com.google.code.gson/gson/2.7/bbb63ca253b483da8ee53a50374593923e3de2e2/gson-2.7-sources.jar" kind="lib" path="C:/Users/Florian Heck/.gradle/caches/modules-2/files-2.1/com.google.code.gson/gson/2.7/751f548c85fa49f330cecbb1875893f971b33c4e/gson-2.7.jar"/>
+	<classpathentry sourcepath="C:/Users/Florian Heck/.gradle/caches/modules-2/files-2.1/org.slf4j/slf4j-simple/1.7.21/58eb8609a8f14e5bbf4d260ce5f364724079227/slf4j-simple-1.7.21-sources.jar" kind="lib" path="C:/Users/Florian Heck/.gradle/caches/modules-2/files-2.1/org.slf4j/slf4j-simple/1.7.21/be4b3c560a37e69b6c58278116740db28832232c/slf4j-simple-1.7.21.jar"/>
+	<classpathentry sourcepath="C:/Users/Florian Heck/.gradle/caches/modules-2/files-2.1/junit/junit/4.11/28e0ad201304e4a4abf999ca0570b7cffc352c3c/junit-4.11-sources.jar" kind="lib" path="C:/Users/Florian Heck/.gradle/caches/modules-2/files-2.1/junit/junit/4.11/4e031bb61df09069aeb2bffb4019e7a5034a4ee0/junit-4.11.jar"/>
+	<classpathentry sourcepath="C:/Users/Florian Heck/.gradle/caches/modules-2/files-2.1/commons-io/commons-io/2.4/f2d8698c46d1167ff24b06a840a87d91a02db891/commons-io-2.4-sources.jar" kind="lib" path="C:/Users/Florian Heck/.gradle/caches/modules-2/files-2.1/commons-io/commons-io/2.4/b1b6ea3b7e4aa4f492509a4952029cd8e48019ad/commons-io-2.4.jar"/>
+	<classpathentry sourcepath="C:/Users/Florian Heck/.gradle/caches/modules-2/files-2.1/org.slf4j/slf4j-api/1.7.21/f285ac123f201fb4b028bac556928d7cf527ef48/slf4j-api-1.7.21-sources.jar" kind="lib" path="C:/Users/Florian Heck/.gradle/caches/modules-2/files-2.1/org.slf4j/slf4j-api/1.7.21/139535a69a4239db087de9bab0bee568bf8e0b70/slf4j-api-1.7.21.jar"/>
+	<classpathentry sourcepath="C:/Users/Florian Heck/.gradle/caches/modules-2/files-2.1/org.hamcrest/hamcrest-core/1.3/1dc37250fbc78e23a65a67fbbaf71d2e9cbc3c0b/hamcrest-core-1.3-sources.jar" kind="lib" path="C:/Users/Florian Heck/.gradle/caches/modules-2/files-2.1/org.hamcrest/hamcrest-core/1.3/42a25dc3219429f0e5d060061f71acb49bf010a0/hamcrest-core-1.3.jar"/>
+</classpath>

@@ -1,16 +1,22 @@
 package de.uni_passau.fim.heck.githubinterface;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.SequenceInputStream;
 import java.net.URL;
+import java.net.URLConnection;
 import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.logging.Logger;
@@ -76,8 +82,8 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of PullRequests or an empty Optional, if an error occured
      */
     public Optional<List<PullRequest>> getPullRequests() {
-        return getJSONReaderFromURL("/pulls?per_page=100&state=all").map(reader -> {
-            ArrayList<PullRequestData> data = gson.fromJson(reader, new TypeToken<ArrayList<PullRequestData>>() {}.getType());
+        return getJSONStringFromURL("/pulls?state=all").map(json -> {
+            ArrayList<PullRequestData> data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() {}.getType());
             return data.stream().filter(pr -> !pr.state.equals("closed")).map(pr ->
                     new PullRequest(this, pr.head.ref, pr.head.repo.full_name + "/" + pr.number,
                             pr.head.repo.html_url, pr.state, repo.getBranch(pr.base.ref).get())
@@ -91,8 +97,8 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of IssueData or an empty Optional if an error occurred
      */
     public Optional<List<IssueData>> getIssues() {
-        return getJSONReaderFromURL("/issues?per_page=100&state=all").map(reader -> {
-            ArrayList<IssueData> data = gson.fromJson(reader, new TypeToken<ArrayList<IssueData>>() {}.getType());
+        return getJSONStringFromURL("/issues?state=all").map(json -> {
+            ArrayList<IssueData> data = gson.fromJson(json, new TypeToken<ArrayList<IssueData>>() {}.getType());
             data.forEach(issue -> {
                 Optional<List<CommentData>> comments = getComments(issue);
                 Optional<List<EventData>> events = getEvents(issue);
@@ -112,8 +118,8 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of EventData or an empty Optional if an error occurred
      */
     Optional<List<EventData>> getEvents(IssueData issue) {
-        return getJSONReaderFromURL("/issues/" + issue.number + "/events?per_page=100").map(reader->
-                gson.fromJson(reader, new TypeToken<ArrayList<EventData>>() {}.getType())
+        return getJSONStringFromURL("/issues/" + issue.number + "/events").map(json->
+                gson.fromJson(json, new TypeToken<ArrayList<EventData>>() {}.getType())
         );
     }
 
@@ -125,8 +131,8 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of CommentData or an empty Optional if an error occurred
      */
     Optional<List<CommentData>> getComments(IssueData issue) {
-        return getJSONReaderFromURL("/issues/" + issue.number + "/comments?per_page=100&state=all").map(reader ->
-                gson.fromJson(reader, new TypeToken<ArrayList<CommentData>>() {}.getType())
+        return getJSONStringFromURL("/issues/" + issue.number + "/comments?state=all").map(json ->
+                gson.fromJson(json, new TypeToken<ArrayList<CommentData>>() {}.getType())
         );
     }
 
@@ -160,21 +166,39 @@ public class GitHubRepository extends Repository {
      *         the api path to call
      * @return the InputStreamReader on the result
      */
-    Optional<InputStreamReader> getJSONReaderFromURL(String path) {
+    Optional<String> getJSONStringFromURL(String path) {
         URL url;
-        InputStreamReader reader;
+        String json;
         try {
             String sep = "?";
-            if (path.contains("?")) {
-                sep = "&";
+            if (path.contains("?")) sep = "&";
+            String count = "&per_page=100";
+
+            List<InputStream> dataStreams = new ArrayList<>();
+            url = new URL(apiBaseURL + path + sep + "access_token=" + oauthToken + count);
+
+            do {
+                URLConnection conn = url.openConnection();
+                Map<String, List<String>> headers = conn.getHeaderFields();
+                Optional<String> next = Arrays.stream(headers.getOrDefault("Link",
+                            new ArrayList<String>() {{ add(""); }}
+                        ).get(0).split(","))
+                    .filter(link -> link.contains("next")).findFirst();
+                dataStreams.add(url.openStream());
+
+                if (!next.isPresent()) break;
+                String nextUrl = next.get();
+                url = new URL(nextUrl.substring(nextUrl.indexOf("<")+1, nextUrl.indexOf(">")));
+            } while (true);
+
+            try (BufferedReader buffer = new BufferedReader(new InputStreamReader(new SequenceInputStream(Collections.enumeration(dataStreams))))) {
+                json = buffer.lines().collect(Collectors.joining("\n")).replace("][", ",");
             }
-            url = new URL(apiBaseURL + path + sep + "access_token=" + oauthToken);
-            reader = new InputStreamReader(url.openStream());
         } catch (IOException e) {
             LOG.warning("Could not get data from Github.");
             return Optional.empty();
         }
-        return Optional.of(reader);
+        return Optional.of(json);
     }
 
     /**
