@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
 import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
@@ -104,13 +105,36 @@ public class GitHubRepository extends Repository {
         }.getType());
         data.forEach(issue -> {
             Optional<List<CommentData>> comments = getComments(issue);
+            Optional<List<EventData>> events = getEvents(issue);
+
             comments.ifPresent(list -> list.forEach(issue::addComment));
+            events.ifPresent(list -> list.forEach(issue::addEvent));
         });
         return Optional.of(data);
     }
 
     /**
-     * Returns a list of commend for a
+     * Returns a list of events for an Issue
+     *
+     * @param issue
+     *         the parent IssueData
+     * @return optionally a list of EventData or an empty Optional if an error occurred
+     */
+    Optional<List<EventData>> getEvents(IssueData issue) {
+        URL url;
+        InputStreamReader reader;
+        try {
+            url = new URL(apiBaseURL + "/issues/" + issue.number + "/events?per_page=100");
+            reader = new InputStreamReader(url.openStream());
+        } catch (IOException e) {
+            LOG.warning("Could not get list of events for issue " + issue.number + " from Github.");
+            return Optional.empty();
+        }
+        return Optional.of(new Gson().fromJson(reader, new TypeToken<ArrayList<EventData>>() {}.getType()));
+    }
+
+    /**
+     * Returns a list of comments for an Issue
      *
      * @param issue
      *         the parent IssueData
@@ -123,12 +147,10 @@ public class GitHubRepository extends Repository {
             url = new URL(apiBaseURL + "/issues/" + issue.number + "/comments?per_page=100&state=all");
             reader = new InputStreamReader(url.openStream());
         } catch (IOException e) {
-            LOG.warning("Could not get list of pull requests from Github.");
+            LOG.warning("Could not get list of comments for issue " + issue.number + " from Github.");
             return Optional.empty();
         }
-        return Optional.of(new Gson().fromJson(reader, new TypeToken<ArrayList<CommentData>>() {
-
-        }.getType()));
+        return Optional.of(new Gson().fromJson(reader, new TypeToken<ArrayList<CommentData>>() {}.getType()));
     }
 
     /**
