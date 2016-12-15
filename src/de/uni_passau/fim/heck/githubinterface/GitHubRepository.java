@@ -38,6 +38,7 @@ public class GitHubRepository extends Repository {
     private final Repository repo;
 
     private final String apiBaseURL;
+    private final String oauthToken;
     private final GitWrapper git;
     private final File dir;
 
@@ -49,7 +50,7 @@ public class GitHubRepository extends Repository {
      * @param git
      *         the GitWrapper instance to use
      */
-    public GitHubRepository(Repository repo, GitWrapper git) {
+    public GitHubRepository(Repository repo, GitWrapper git, String oauthToken) {
         this.repo = repo;
         String repoUrl = repo.getUrl();
         if (repoUrl.contains("git@")) {
@@ -58,31 +59,22 @@ public class GitHubRepository extends Repository {
         apiBaseURL = repoUrl.replace(".git", "").replace("//github.com/", "//api.github.com/repos/");
         this.git = git;
         dir = repo.getDir();
+        this.oauthToken = oauthToken;
     }
 
     /**
-     * Gets a list of PullRequests.
+     * Gets a list of all PullRequests.
      *
      * @return optionally a list of PullRequests or an empty Optional, if an error occured
      */
     public Optional<List<PullRequest>> getPullRequests() {
-        URL url;
-        InputStreamReader reader;
-        try {
-            url = new URL(apiBaseURL + "/pulls?per_page=100&state=all");
-            reader = new InputStreamReader(url.openStream());
-        } catch (IOException e) {
-            LOG.warning("Could not get list of pull requests from Github.");
-            return Optional.empty();
-        }
-
-        ArrayList<PullRequestData> data = new Gson().fromJson(reader, new TypeToken<ArrayList<PullRequestData>>() {
-
-        }.getType());
-        return Optional.of(data.stream().filter(pr -> !pr.state.equals("closed")).map(pr ->
-                new PullRequest(this, pr.head.ref, pr.head.repo.full_name + "/" + pr.number,
-                        pr.head.repo.html_url, pr.state, repo.getBranch(pr.base.ref).get())
-        ).collect(Collectors.toList()));
+        return getJSONReaderFromURL("/pulls?per_page=100&state=all").map(reader -> {
+            ArrayList<PullRequestData> data = new Gson().fromJson(reader, new TypeToken<ArrayList<PullRequestData>>() {}.getType());
+            return data.stream().filter(pr -> !pr.state.equals("closed")).map(pr ->
+                    new PullRequest(this, pr.head.ref, pr.head.repo.full_name + "/" + pr.number,
+                            pr.head.repo.html_url, pr.state, repo.getBranch(pr.base.ref).get())
+            ).collect(Collectors.toList());
+        });
     }
 
     /**
@@ -91,26 +83,18 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of IssueData or an empty Optional if an error occurred
      */
     public Optional<List<IssueData>> getIssues() {
-        URL url;
-        InputStreamReader reader;
-        try {
-            url = new URL(apiBaseURL + "/issues?per_page=100&state=all");
-            reader = new InputStreamReader(url.openStream());
-        } catch (IOException e) {
-            LOG.warning("Could not get list of pull requests from Github.");
-            return Optional.empty();
-        }
-        ArrayList<IssueData> data = new Gson().fromJson(reader, new TypeToken<ArrayList<IssueData>>() {
+        return getJSONReaderFromURL("/issues?per_page=100&state=all").map(reader -> {
 
-        }.getType());
-        data.forEach(issue -> {
-            Optional<List<CommentData>> comments = getComments(issue);
-            Optional<List<EventData>> events = getEvents(issue);
+            ArrayList<IssueData> data = new Gson().fromJson(reader, new TypeToken<ArrayList<IssueData>>() {}.getType());
+            data.forEach(issue -> {
+                Optional<List<CommentData>> comments = getComments(issue);
+                Optional<List<EventData>> events = getEvents(issue);
 
-            comments.ifPresent(list -> list.forEach(issue::addComment));
-            events.ifPresent(list -> list.forEach(issue::addEvent));
+                comments.ifPresent(list -> list.forEach(issue::addComment));
+                events.ifPresent(list -> list.forEach(issue::addEvent));
+            });
+            return data;
         });
-        return Optional.of(data);
     }
 
     /**
@@ -121,16 +105,9 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of EventData or an empty Optional if an error occurred
      */
     Optional<List<EventData>> getEvents(IssueData issue) {
-        URL url;
-        InputStreamReader reader;
-        try {
-            url = new URL(apiBaseURL + "/issues/" + issue.number + "/events?per_page=100");
-            reader = new InputStreamReader(url.openStream());
-        } catch (IOException e) {
-            LOG.warning("Could not get list of events for issue " + issue.number + " from Github.");
-            return Optional.empty();
-        }
-        return Optional.of(new Gson().fromJson(reader, new TypeToken<ArrayList<EventData>>() {}.getType()));
+        return getJSONReaderFromURL("/issues/" + issue.number + "/events?per_page=100").map(reader->
+                new Gson().fromJson(reader, new TypeToken<ArrayList<EventData>>() {}.getType())
+        );
     }
 
     /**
@@ -141,16 +118,9 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of CommentData or an empty Optional if an error occurred
      */
     Optional<List<CommentData>> getComments(IssueData issue) {
-        URL url;
-        InputStreamReader reader;
-        try {
-            url = new URL(apiBaseURL + "/issues/" + issue.number + "/comments?per_page=100&state=all");
-            reader = new InputStreamReader(url.openStream());
-        } catch (IOException e) {
-            LOG.warning("Could not get list of comments for issue " + issue.number + " from Github.");
-            return Optional.empty();
-        }
-        return Optional.of(new Gson().fromJson(reader, new TypeToken<ArrayList<CommentData>>() {}.getType()));
+        return getJSONReaderFromURL("/issues/" + issue.number + "/comments?per_page=100&state=all").map(reader ->
+                new Gson().fromJson(reader, new TypeToken<ArrayList<CommentData>>() {}.getType())
+        );
     }
 
     /**
@@ -174,6 +144,30 @@ public class GitHubRepository extends Repository {
         };
 
         return commitList.map(toCommitList);
+    }
+
+    /**
+     * Returns a InputStreamReader reading the JSON data return from the GitHub api called with the api path on the current repository
+     *
+     * @param path
+     *         the api path to call
+     * @return the InputStreamReader on the result
+     */
+    Optional<InputStreamReader> getJSONReaderFromURL(String path) {
+        URL url;
+        InputStreamReader reader;
+        try {
+            String sep = "?";
+            if (path.contains("?")) {
+                sep = "&";
+            }
+            url = new URL(apiBaseURL + path + sep + "access_token=" + oauthToken);
+            reader = new InputStreamReader(url.openStream());
+        } catch (IOException e) {
+            LOG.warning("Could not get data from Github.");
+            return Optional.empty();
+        }
+        return Optional.of(reader);
     }
 
     /**
