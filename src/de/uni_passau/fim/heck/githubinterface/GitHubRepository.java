@@ -61,6 +61,20 @@ public class GitHubRepository extends Repository {
      * @param git
      *         the GitWrapper instance to use
      */
+    public GitHubRepository(Repository repo, GitWrapper git) {
+        this(repo, git, null);
+    }
+
+    /**
+     * Create a wrapper around a (local) repository with additional information about Github hosted repositories.
+     *
+     * @param repo
+     *         the local repository
+     * @param git
+     *         the GitWrapper instance to use
+     * @param oauthToken
+     *         GitHub OAUTH token
+     */
     public GitHubRepository(Repository repo, GitWrapper git, String oauthToken) {
         this.repo = repo;
         String repoUrl = repo.getUrl();
@@ -187,10 +201,12 @@ public class GitHubRepository extends Repository {
         try {
             String sep = "?";
             if (urlString.contains("?")) sep = "&";
-            String count = "&per_page=100";
+            String count = "per_page=100";
+            String token = oauthToken != null ? sep + "access_token=" + oauthToken : "";
 
             List<InputStream> dataStreams = new ArrayList<>();
-            url = new URL(urlString + sep + "access_token=" + oauthToken + count);
+            if (urlString.contains("?")) sep = "&";
+            url = new URL(urlString + token + sep + count);
 
             do {
                 URLConnection conn = url.openConnection();
