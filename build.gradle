@@ -2,7 +2,6 @@ plugins {
     id 'java'
     id 'idea'
     id 'eclipse'
-    id 'application'
 }
 
 version '1.0-SNAPSHOT'
