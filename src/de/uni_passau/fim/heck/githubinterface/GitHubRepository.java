@@ -29,6 +29,7 @@ import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.UserData;
 import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
 import de.uni_passau.fim.seibt.gitwrapper.repo.BlameLine;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Branch;
@@ -74,6 +75,7 @@ public class GitHubRepository extends Repository {
         GsonFireBuilder gfb = new GsonFireBuilder();
         gfb.registerPostProcessor(IssueData.class, new IssueDataPostprocessor(this));
         GsonBuilder gb = gfb.createGsonBuilder();
+        gb.registerTypeAdapter(UserData.class, new UserDataDeserializer(this));
         gb.registerTypeAdapter(EventData.class, new EventDataDeserializer());
         gson = gb.create();
     }
