@@ -84,7 +84,7 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of PullRequests or an empty Optional, if an error occured
      */
     public Optional<List<PullRequest>> getPullRequests() {
-        return getJSONStringFromURL("/pulls?state=all").map(json -> {
+        return getJSONStringFromPath("/pulls?state=all").map(json -> {
             ArrayList<PullRequestData> data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() {}.getType());
             return data.stream().filter(pr -> !pr.state.equals("closed")).map(pr ->
                     new PullRequest(this, pr.head.ref, pr.head.repo.full_name + "/" + pr.number,
@@ -101,7 +101,7 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of IssueData or an empty Optional if an error occurred
      */
     public Optional<List<IssueData>> getIssues(boolean includePullRequests) {
-        return getJSONStringFromURL("/issues?state=all").map(json -> {
+        return getJSONStringFromPath("/issues?state=all").map(json -> {
             ArrayList<IssueData> data = gson.fromJson(json, new TypeToken<ArrayList<IssueData>>() {}.getType());
             if (!includePullRequests) {
                 return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
@@ -119,7 +119,7 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of EventData or an empty Optional if an error occurred
      */
     Optional<List<EventData>> getEvents(IssueData issue) {
-        return getJSONStringFromURL("/issues/" + issue.number + "/events").map(json->
+        return getJSONStringFromPath("/issues/" + issue.number + "/events").map(json ->
                 gson.fromJson(json, new TypeToken<ArrayList<EventData>>() {}.getType())
         );
     }
@@ -132,7 +132,7 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of CommentData or an empty Optional if an error occurred
      */
     Optional<List<CommentData>> getComments(IssueData issue) {
-        return getJSONStringFromURL("/issues/" + issue.number + "/comments?state=all").map(json ->
+        return getJSONStringFromPath("/issues/" + issue.number + "/comments?state=all").map(json ->
                 gson.fromJson(json, new TypeToken<ArrayList<CommentData>>() {}.getType())
         );
     }
@@ -161,22 +161,34 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Returns a InputStreamReader reading the JSON data return from the GitHub api called with the api path on the current repository
+     * Returns an InputStreamReader reading the JSON data return from the GitHub api called with the api path on the current repository.
      *
      * @param path
      *         the api path to call
      * @return the InputStreamReader on the result
      */
-    Optional<String> getJSONStringFromURL(String path) {
+    Optional<String> getJSONStringFromPath(String path) {
+        return getJSONStringFromURL(apiBaseURL + path);
+    }
+
+    /**
+     * Returns a InputStreamReader reading the JSON data return from the GitHub api called with the url.
+     * The caller is responsible, that the url matches this repository.
+     *
+     * @param urlString
+     *         the url to call
+     * @return the InputStreamReader on the result
+     */
+    Optional<String> getJSONStringFromURL(String urlString) {
         URL url;
         String json;
         try {
             String sep = "?";
-            if (path.contains("?")) sep = "&";
+            if (urlString.contains("?")) sep = "&";
             String count = "&per_page=100";
 
             List<InputStream> dataStreams = new ArrayList<>();
-            url = new URL(apiBaseURL + path + sep + "access_token=" + oauthToken + count);
+            url = new URL(urlString + sep + "access_token=" + oauthToken + count);
 
             do {
                 URLConnection conn = url.openConnection();
@@ -189,7 +201,7 @@ public class GitHubRepository extends Repository {
 
                 if (!next.isPresent()) break;
                 String nextUrl = next.get();
-                url = new URL(nextUrl.substring(nextUrl.indexOf("<")+1, nextUrl.indexOf(">")));
+                url = new URL(nextUrl.substring(nextUrl.indexOf("<") + 1, nextUrl.indexOf(">")));
             } while (true);
 
             try (BufferedReader buffer = new BufferedReader(new InputStreamReader(new SequenceInputStream(Collections.enumeration(dataStreams))))) {
