@@ -2,3 +2,6 @@
 .gradle/
 .idea/
 build/
+.classpath
+.project
+.settings
