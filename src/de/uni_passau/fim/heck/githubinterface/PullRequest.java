@@ -32,7 +32,7 @@ public class PullRequest extends Reference {
      *         the target branch
      */
     PullRequest(GitHubRepository repo, String id, String remoteName, String forkURL, String state, Reference targetBranch) {
-        super(repo, id);
+        super(repo, remoteName + "/" +id);
         this.state = state;
         this.targetBranch = targetBranch;
         repo.addRemote(remoteName, forkURL);
