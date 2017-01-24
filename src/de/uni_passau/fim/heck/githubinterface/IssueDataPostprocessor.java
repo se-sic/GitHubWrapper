@@ -63,7 +63,7 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
     }
 
     private List<String> extractSHA1s(String text) {
-        Pattern sha1Pattern = Pattern.compile("([0-9a-f]){5,40}");
+        Pattern sha1Pattern = Pattern.compile("([0-9a-f]{5,40})");
         Matcher matcher = sha1Pattern.matcher(text);
 
         List<String> sha1s = new ArrayList<>();
