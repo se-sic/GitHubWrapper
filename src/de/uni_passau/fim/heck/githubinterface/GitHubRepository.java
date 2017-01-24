@@ -119,10 +119,10 @@ public class GitHubRepository extends Repository {
                 LOG.warning("Encountered invalid JSON: " + json);
                 return null;
             }
-            if (!includePullRequests) {
-                return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
-            } else {
+            if (includePullRequests || data == null) {
                 return data;
+            } else {
+                return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
             }
         });
     }
@@ -219,10 +219,19 @@ public class GitHubRepository extends Repository {
             do {
                 URLConnection conn = url.openConnection();
                 Map<String, List<String>> headers = conn.getHeaderFields();
+
+                boolean noAPICallsRemaining = headers.getOrDefault("X-RateLimit-Remaining",
+                        new ArrayList<String>() {{ add("0"); }}).stream().anyMatch(x -> x.equals("0"));
+                if (noAPICallsRemaining) {
+                    Date timeout = new Date(Long.parseLong(headers.get("X-RateLimit-Reset").get(0)) * 1000);
+                    LOG.warning("Reached rate limit, try again at " + timeout);
+                    break;
+                }
+
                 Optional<String> next = Arrays.stream(headers.getOrDefault("Link",
-                            new ArrayList<String>() {{ add(""); }}
-                        ).get(0).split(","))
-                    .filter(link -> link.contains("next")).findFirst();
+                        new ArrayList<String>() {{ add(""); }}
+                    ).get(0).split(","))
+                        .filter(link -> link.contains("next")).findFirst();
                 dataStreams.add(url.openStream());
 
                 if (!next.isPresent()) break;
