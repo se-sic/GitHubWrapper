@@ -75,6 +75,7 @@ public class GitHubRepository extends Repository {
         GsonFireBuilder gfb = new GsonFireBuilder();
         gfb.registerPostProcessor(IssueData.class, new IssueDataPostprocessor(this));
         GsonBuilder gb = gfb.createGsonBuilder();
+        gb.registerTypeAdapter(Commit.class, new CommitSerializer());
         gb.registerTypeAdapter(UserData.class, new UserDataDeserializer(this));
         gb.registerTypeAdapter(EventData.class, new EventDataDeserializer());
         gson = gb.create();
@@ -214,6 +215,17 @@ public class GitHubRepository extends Repository {
             return Optional.empty();
         }
         return Optional.of(json);
+    }
+
+    /**
+     * This method provides a convenient was to convert GitHub-related objects back to their JSON representation
+     *
+     * @param obj
+     *         the object to serialize
+     * @return a string canting the JSON representation
+     */
+    public String serialize(Object obj) {
+        return gson.toJson(obj);
     }
 
     /**
