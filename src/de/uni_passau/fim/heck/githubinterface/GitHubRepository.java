@@ -114,7 +114,7 @@ public class GitHubRepository extends Repository {
                 return null;
             }
             return data.stream().filter(pr -> !(pr.state.equals("closed") && onlyOpen)).map(pr ->
-                    new PullRequest(this, pr.head.ref, pr.head.repo.full_name + "/" + pr.number,
+                    new PullRequest(this, pr.head.ref, pr.head.repo.full_name,
                             pr.head.repo.html_url, pr.state, repo.getBranch(pr.base.ref).get())
             ).collect(Collectors.toList());
         });
