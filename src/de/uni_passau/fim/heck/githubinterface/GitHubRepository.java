@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
@@ -88,7 +89,13 @@ public class GitHubRepository extends Repository {
      */
     public Optional<List<PullRequest>> getPullRequests() {
         return getJSONStringFromPath("/pulls?state=all").map(json -> {
-            ArrayList<PullRequestData> data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() {}.getType());
+            ArrayList<PullRequestData> data;
+            try {
+                data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() {}.getType());
+            } catch (JsonSyntaxException e) {
+                LOG.warning("Encountered invalid JSON: " + json);
+                return null;
+            }
             return data.stream().filter(pr -> !pr.state.equals("closed")).map(pr ->
                     new PullRequest(this, pr.head.ref, pr.head.repo.full_name + "/" + pr.number,
                             pr.head.repo.html_url, pr.state, repo.getBranch(pr.base.ref).get())
@@ -105,7 +112,13 @@ public class GitHubRepository extends Repository {
      */
     public Optional<List<IssueData>> getIssues(boolean includePullRequests) {
         return getJSONStringFromPath("/issues?state=all").map(json -> {
-            ArrayList<IssueData> data = gson.fromJson(json, new TypeToken<ArrayList<IssueData>>() {}.getType());
+            ArrayList<IssueData> data;
+            try {
+                data = gson.fromJson(json, new TypeToken<ArrayList<IssueData>>() {}.getType());
+            } catch (JsonSyntaxException e) {
+                LOG.warning("Encountered invalid JSON: " + json);
+                return null;
+            }
             if (!includePullRequests) {
                 return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
             } else {
@@ -122,9 +135,14 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of EventData or an empty Optional if an error occurred
      */
     Optional<List<EventData>> getEvents(IssueData issue) {
-        return getJSONStringFromPath("/issues/" + issue.number + "/events").map(json ->
-                gson.fromJson(json, new TypeToken<ArrayList<EventData>>() {}.getType())
-        );
+        return getJSONStringFromPath("/issues/" + issue.number + "/events").map(json -> {
+            try {
+                return gson.fromJson(json, new TypeToken<ArrayList<EventData>>() {}.getType());
+            } catch (JsonSyntaxException e) {
+                LOG.warning("Encountered invalid JSON: " + json);
+                return null;
+            }
+        });
     }
 
     /**
@@ -135,9 +153,14 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of CommentData or an empty Optional if an error occurred
      */
     Optional<List<CommentData>> getComments(IssueData issue) {
-        return getJSONStringFromPath("/issues/" + issue.number + "/comments?state=all").map(json ->
-                gson.fromJson(json, new TypeToken<ArrayList<CommentData>>() {}.getType())
-        );
+        return getJSONStringFromPath("/issues/" + issue.number + "/comments?state=all").map(json -> {
+            try {
+                return gson.fromJson(json, new TypeToken<ArrayList<CommentData>>() {}.getType());
+            } catch (JsonSyntaxException e) {
+                LOG.warning("Encountered invalid JSON: " + json);
+                return null;
+            }
+        });
     }
 
     /**
