@@ -62,6 +62,21 @@ public class GitHubRepository extends Repository {
      * @param git
      *         the GitWrapper instance to use
      */
+    public GitHubRepository(Repository repo, GitWrapper git) {
+        this(repo, git, "");
+    }
+
+    /**
+     * Create a wrapper around a (local) repository with additional information about Github hosted repositories.
+     *
+     * @param repo
+     *         the local repository
+     * @param git
+     *         the GitWrapper instance to use
+     * @param oauthToken
+     *         a valid oAuth token for GitHub
+     *         (see https://github.com/settings/tokens for information about creating such tokens)
+     */
     public GitHubRepository(Repository repo, GitWrapper git, String oauthToken) {
         this.repo = repo;
         String repoUrl = repo.getUrl();
