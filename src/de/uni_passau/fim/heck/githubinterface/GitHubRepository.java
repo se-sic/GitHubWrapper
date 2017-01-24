@@ -100,9 +100,11 @@ public class GitHubRepository extends Repository {
     /**
      * Gets a list of all PullRequests.
      *
-     * @return optionally a list of PullRequests or an empty Optional, if an error occured
+     * @param onlyOpen
+     *         if <code>true</code>, only open pull requests are included
+     * @return optionally a list of PullRequests or an empty Optional, if an error occurred
      */
-    public Optional<List<PullRequest>> getPullRequests() {
+    public Optional<List<PullRequest>> getPullRequests(boolean onlyOpen) {
         return getJSONStringFromPath("/pulls?state=all").map(json -> {
             ArrayList<PullRequestData> data;
             try {
@@ -111,7 +113,7 @@ public class GitHubRepository extends Repository {
                 LOG.warning("Encountered invalid JSON: " + json);
                 return null;
             }
-            return data.stream().filter(pr -> !pr.state.equals("closed")).map(pr ->
+            return data.stream().filter(pr -> !(pr.state.equals("closed") && onlyOpen)).map(pr ->
                     new PullRequest(this, pr.head.ref, pr.head.repo.full_name + "/" + pr.number,
                             pr.head.repo.html_url, pr.state, repo.getBranch(pr.base.ref).get())
             ).collect(Collectors.toList());
