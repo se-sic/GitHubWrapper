@@ -5,6 +5,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Reference;
 
@@ -14,6 +15,7 @@ public class PullRequest extends Reference {
     private final Reference targetBranch;
 
     private final GitHubRepository repo;
+    private final IssueData issue;
 
     /**
      * Adds a PullRequest to the given repo {@code repo}.
@@ -30,13 +32,16 @@ public class PullRequest extends Reference {
      *         the sate of the pull request
      * @param targetBranch
      *         the target branch
+     * @param issue
+     *         the corresponding issue in GitHUb
      */
-    PullRequest(GitHubRepository repo, String id, String remoteName, String forkURL, String state, Reference targetBranch) {
-        super(repo, remoteName + "/" +id);
+    PullRequest(GitHubRepository repo, String id, String remoteName, String forkURL, String state, Reference targetBranch, IssueData issue) {
+        super(repo, remoteName + "/" + id);
         this.state = state;
         this.targetBranch = targetBranch;
         repo.addRemote(remoteName, forkURL);
         this.repo = repo;
+        this.issue = issue;
     }
 
     public Optional<Reference> getMergeTarget() {
@@ -60,5 +65,9 @@ public class PullRequest extends Reference {
 
     public String getState() {
         return state;
+    }
+
+    public IssueData getIssue() {
+        return issue;
     }
 }
