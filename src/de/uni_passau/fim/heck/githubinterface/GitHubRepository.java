@@ -188,7 +188,7 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of {@link Commit commits} or an empty optional if the operation failed
      */
     Optional<List<Commit>> getCommitsBeforeDate(Date date) {
-        DateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm'Z'");
+        DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm");
         Optional<ProcessExecutor.ExecRes> commitList = git.exec(dir, "log", "--format=tformat:%H", "--branches=*", "--until=" + df.format(date));
         Function<ProcessExecutor.ExecRes, List<Commit>> toCommitList = res -> {
             if (git.failed(res)) {
