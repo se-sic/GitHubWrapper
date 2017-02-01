@@ -11,6 +11,7 @@ public class PullRequestData extends IssueData {
 
     public class Ref {
         public String ref;
+        public String sha;
         public RepoData repo;
     }
 }

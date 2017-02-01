@@ -5,7 +5,9 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Reference;
 
@@ -15,7 +17,7 @@ public class PullRequest extends Reference {
     private final Reference targetBranch;
 
     private final GitHubRepository repo;
-    private final IssueData issue;
+    private final PullRequestData issue;
 
     /**
      * Adds a PullRequest to the given repo {@code repo}.
@@ -33,9 +35,9 @@ public class PullRequest extends Reference {
      * @param targetBranch
      *         the target branch
      * @param issue
-     *         the corresponding issue in GitHUb
+     *         the corresponding pull request in GitHub
      */
-    PullRequest(GitHubRepository repo, String id, String remoteName, String forkURL, String state, Reference targetBranch, IssueData issue) {
+    PullRequest(GitHubRepository repo, String id, String remoteName, String forkURL, String state, Reference targetBranch, PullRequestData issue) {
         super(repo, remoteName + "/" + id);
         this.state = state;
         this.targetBranch = targetBranch;
@@ -56,11 +58,16 @@ public class PullRequest extends Reference {
     }
 
     public Optional<Commit> getTip() {
-        return repo.getCommit(id);
+        return repo.getCommit(issue.head.sha);
     }
 
     public Optional<Commit> getMergeBase() {
         return super.getMergeBase(targetBranch);
+    }
+
+    @Override
+    public String getId() {
+        return getTip().get().getId();
     }
 
     public String getState() {
