@@ -1,9 +1,12 @@
 package de.uni_passau.fim.heck.githubinterface;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.logging.Logger;
 
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
@@ -107,5 +110,20 @@ public class PullRequest extends Reference {
 
     public IssueData getIssue() {
         return issue;
+    }
+
+    public Optional<List<Commit>> getCommits() {
+        return getMergeBase().flatMap(base -> getTip().map(tip -> {
+            Queue<Commit> next = new ArrayDeque<>();
+            List<Commit> commits = new ArrayList<>();
+
+            Commit c = tip;
+            do {
+                commits.add(c);
+                c.getParents().ifPresent(next::addAll);
+                c = next.poll();
+            } while(c != null && !c.equals(base));
+            return commits;
+        }));
     }
 }
