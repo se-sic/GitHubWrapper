@@ -188,8 +188,21 @@ public class GitHubRepository extends Repository {
      * @return optionally a list of {@link Commit commits} or an empty optional if the operation failed
      */
     Optional<List<Commit>> getCommitsBeforeDate(Date date) {
+        return getCommitsBeforeDate(date, "*");
+    }
+
+    /**
+     * Gets a list of all commits before a given date on a branch.
+     *
+     * @param date
+     *         the date until commits are included
+     * @param branch
+     *         limit commits to this specific branch
+     * @return optionally a list of {@link Commit commits} or an empty optional if the operation failed
+     */
+    Optional<List<Commit>> getCommitsBeforeDate(Date date, String branch) {
         DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm");
-        Optional<ProcessExecutor.ExecRes> commitList = git.exec(dir, "log", "--format=tformat:%H", "--branches=*", "--until=" + df.format(date));
+        Optional<ProcessExecutor.ExecRes> commitList = git.exec(dir, "log", "--format=tformat:%H", "--branches=" + branch, "--until=" + df.format(date));
         Function<ProcessExecutor.ExecRes, List<Commit>> toCommitList = res -> {
             if (git.failed(res)) {
                 LOG.warning(() -> String.format("Failed to obtain the commits from %s.", this));
