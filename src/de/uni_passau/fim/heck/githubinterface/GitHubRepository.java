@@ -45,14 +45,14 @@ import io.gsonfire.GsonFireBuilder;
 public class GitHubRepository extends Repository {
 
     private static final Logger LOG = Logger.getLogger(GitHubRepository.class.getCanonicalName());
+
     private final Repository repo;
+    private Gson gson;
 
     private final String apiBaseURL;
     private final String oauthToken;
     private final GitWrapper git;
     private final File dir;
-
-    private Gson gson;
 
     /**
      * Create a wrapper around a (local) repository with additional information about Github hosted repositories.
@@ -136,11 +136,11 @@ public class GitHubRepository extends Repository {
                 LOG.warning("Encountered invalid JSON: " + json);
                 return null;
             }
-            if (includePullRequests || data == null) {
-                return data;
-            } else {
+
+            if (data != null && !includePullRequests) {
                 return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
             }
+            return data;
         });
     }
 
@@ -269,6 +269,7 @@ public class GitHubRepository extends Repository {
                 url = new URL(nextUrl.substring(nextUrl.indexOf("<") + 1, nextUrl.indexOf(">")));
             } while (true);
 
+            // concatenate all results together, making one large JSON list
             try (BufferedReader buffer = new BufferedReader(new InputStreamReader(new SequenceInputStream(Collections.enumeration(dataStreams))))) {
                 json = buffer.lines().collect(Collectors.joining("\n")).replace("][", ",");
             }
@@ -280,7 +281,7 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * This method provides a convenient was to convert GitHub-related objects back to their JSON representation
+     * This method provides a convenient way to convert GitHub-related objects back to their JSON representation
      *
      * @param obj
      *         the object to serialize

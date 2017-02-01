@@ -52,6 +52,12 @@ public class PullRequest extends Reference {
         this.issue = issue;
     }
 
+    /**
+     * Determines the commit which will be the second parent in a hypothetical merge, or return the actual merge partner
+     * for merged already carried out.
+     *
+     * @return the other referent for the merge
+     */
     public Optional<Reference> getMergeTarget() {
         // All merged pull requests are a problem since both sides are in the history of the target branch, so we need
         // to handle all merged pull requests differently by looking at the parents of the actual merge and using the
@@ -75,10 +81,20 @@ public class PullRequest extends Reference {
         });
     }
 
+    /**
+     * Gets the commit at the tip of this pull request.
+     *
+     * @return the commit at the tip
+     */
     public Optional<Commit> getTip() {
         return repo.getCommit(issue.head.sha);
     }
 
+    /**
+     * Determines the merge base between the merge target ({@link #getMergeTarget}) and the tip ({@link #getTip})
+     *
+     * @return the commit that constitutes the merge base
+     */
     public Optional<Commit> getMergeBase() {
         Optional<Commit> gitBase = getMergeTarget().flatMap(this::getMergeBase);
         Commit githubBase = repo.getCommitUnchecked(issue.base.sha);
@@ -95,6 +111,11 @@ public class PullRequest extends Reference {
         return getTip().get().getId();
     }
 
+    /**
+     * Gets the state of this pull request, either <code>closed</code> or <code>open</code>.
+     *
+     * @return the state as string
+     */
     public String getState() {
         return state;
     }
@@ -108,6 +129,11 @@ public class PullRequest extends Reference {
         return issue.getEventsList().stream().filter(e -> e.event.equals("merged")).findFirst().map(e -> ((EventData.ReferencedEventData) e));
     }
 
+    /**
+     * Gets the corresponding GitHub issue to this pull request.
+     *
+     * @return the issue
+     */
     public IssueData getIssue() {
         return issue;
     }
