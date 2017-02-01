@@ -74,6 +74,15 @@ public class PullRequest extends Reference {
         return state;
     }
 
+    private boolean isMerged() {
+        return state.equals("closed") && getMerge().isPresent();
+    }
+
+    private Optional<EventData.ReferencedEventData> getMerge() {
+        // find a merge event
+        return issue.getEventsList().stream().filter(e -> e.event.equals("merged")).findFirst().map(e -> ((EventData.ReferencedEventData) e));
+    }
+
     public IssueData getIssue() {
         return issue;
     }
