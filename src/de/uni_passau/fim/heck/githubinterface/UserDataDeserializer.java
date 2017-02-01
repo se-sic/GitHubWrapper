@@ -1,12 +1,12 @@
 package de.uni_passau.fim.heck.githubinterface;
 
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
@@ -16,6 +16,10 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.UserData;
 
+/**
+ * The UserDataSerializer helps with keeping track of UserData (including the email, which is not provided directly by
+ * GitHub).
+ */
 public class UserDataDeserializer implements JsonDeserializer<UserData> {
 
     private static Map<String, UserData> users = new HashMap<>();
@@ -63,7 +67,7 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
             }
         });
 
-        List<Map.Entry<String, Integer>> posMails = emails.entrySet().stream().collect(Collectors.toList());
+        List<Map.Entry<String, Integer>> posMails = new ArrayList<>(emails.entrySet());
         if (posMails.isEmpty()) return "";
 
         posMails.sort(Comparator.comparingInt(Map.Entry::getValue));

@@ -10,6 +10,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParseException;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 
+/**
+ * The EventDataDeserializer helps with mapping events to their specific subclasses.
+ */
 public class EventDataDeserializer implements JsonDeserializer<EventData> {
 
     private static Map<String, Class> map = new TreeMap<>();

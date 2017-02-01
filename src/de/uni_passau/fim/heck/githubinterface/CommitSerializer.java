@@ -9,7 +9,7 @@ import com.google.gson.JsonSerializer;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 
 /**
- * A CommitSerializer allows for serialization of {@link Commit Commits} to JSON using the GSON library.
+ * The CommitSerializer allows for serialization of Commits to JSON using the GSON library.
  */
 public class CommitSerializer implements JsonSerializer<Commit> {
 

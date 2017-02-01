@@ -1,17 +1,23 @@
 package de.uni_passau.fim.heck.githubinterface.datadefinitions;
 
+import de.uni_passau.fim.heck.githubinterface.PullRequest;
+
+/**
+ * A skeleton object to deserialize a {@link PullRequest}.
+ */
 public class PullRequestData extends IssueData {
 
-    public Ref head;
-    public Ref base;
+    /**
+     * Info about the head/tip of the PullRequest.
+     */
+    public RefData head;
+
+    /**
+     * Info about the base/target of the PullRequest.
+     */
+    public RefData base;
 
     public PullRequestData() {
         this.isPullRequest = true;
-    }
-
-    public class Ref {
-        public String ref;
-        public String sha;
-        public RepoData repo;
     }
 }

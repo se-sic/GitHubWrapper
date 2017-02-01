@@ -16,6 +16,10 @@ import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 import io.gsonfire.PostProcessor;
 
+/**
+ * The IssueDataPostprocessor extracts additional information from issues and populated IssueData instances with other
+ * git-related information
+ */
 public class IssueDataPostprocessor implements PostProcessor<IssueData> {
 
     private final GitHubRepository repo;
@@ -37,11 +41,11 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
     }
 
     /**
-     * Parses commits from issue body, comment bodies and reference events.
+     * Parses Commits from issue body, comment bodies and referenced events.
      *
      * @param issue
-     *         the issue data
-     * @return a list of all referenced commits
+     *         the IssueData
+     * @return a List of all referenced Commits
      */
     private List<Commit> parseCommits(IssueData issue) {
         Stream<String> commentCommits = issue.getCommentsList().stream().map(comment -> comment.body)
@@ -62,6 +66,13 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Extracts theoretically valid commit hashes form text.
+     *
+     * @param text
+     *         the text to analyze
+     * @return a List of all valid hashes
+     */
     private List<String> extractSHA1s(String text) {
         Pattern sha1Pattern = Pattern.compile("([0-9a-f]{5,40})");
         Matcher matcher = sha1Pattern.matcher(text);

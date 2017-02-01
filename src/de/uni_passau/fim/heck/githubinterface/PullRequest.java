@@ -29,11 +29,11 @@ public class PullRequest extends Reference {
      * Adds a PullRequest to the given repo {@code repo}.
      *
      * @param repo
-     *         the local repository representation of the github repository
+     *         the local Repository representation of the GitHub repository
      * @param id
      *         the branch name
      * @param remoteName
-     *         the unique identifier (user/branch/pr-number)
+     *         the identifier (&lt;user&gt;/&lt;branch&gt;)
      * @param forkURL
      *         the url of the forked repo
      * @param state
@@ -56,12 +56,12 @@ public class PullRequest extends Reference {
      * Determines the commit which will be the second parent in a hypothetical merge, or return the actual merge partner
      * for merged already carried out.
      *
-     * @return the other referent for the merge
+     * @return optionally the other reference for the merge, or an empty Optional, if the operations failed
      */
     public Optional<Reference> getMergeTarget() {
         // All merged pull requests are a problem since both sides are in the history of the target branch, so we need
         // to handle all merged pull requests differently by looking at the parents of the actual merge and using the
-        // parent that is not in the tip of the pull request, since that is the commit that it was merged into
+        // parent that is not in the tip of the pull request, since that is the commit that was merged into
         if (isMerged()) {
             return Optional.of(repo.getCommitUnchecked(getMerge().get().commit_id)
                     .getParents().orElseGet(ArrayList::new).stream().filter(p -> !p.equals(getTip().orElse(null)))
@@ -82,9 +82,9 @@ public class PullRequest extends Reference {
     }
 
     /**
-     * Gets the commit at the tip of this pull request.
+     * Gets the Commit at the tip of this PullRequest.
      *
-     * @return the commit at the tip
+     * @return optionally the Commit at the tip, or an empty Optional, if the operations failed
      */
     public Optional<Commit> getTip() {
         return repo.getCommit(issue.head.sha);
@@ -93,7 +93,7 @@ public class PullRequest extends Reference {
     /**
      * Determines the merge base between the merge target ({@link #getMergeTarget}) and the tip ({@link #getTip})
      *
-     * @return the commit that constitutes the merge base
+     * @return optionally the Commit that constitutes the merge base, or an empty Optional, if the operations failed
      */
     public Optional<Commit> getMergeBase() {
         Optional<Commit> gitBase = getMergeTarget().flatMap(this::getMergeBase);
@@ -112,9 +112,9 @@ public class PullRequest extends Reference {
     }
 
     /**
-     * Gets the state of this pull request, either <code>closed</code> or <code>open</code>.
+     * Gets the state of this pull request, either {@code closed} or {@code open}.
      *
-     * @return the state as string
+     * @return the state as the String used by GitHub
      */
     public String getState() {
         return state;
@@ -132,12 +132,17 @@ public class PullRequest extends Reference {
     /**
      * Gets the corresponding GitHub issue to this pull request.
      *
-     * @return the issue
+     * @return the IssueData
      */
     public IssueData getIssue() {
         return issue;
     }
 
+    /**
+     * Returns a List of all Commits that are included in this PullRequest.
+     *
+     * @return optionally a List of the Commits, or an empty Optional, if the operation failed
+     */
     public Optional<List<Commit>> getCommits() {
         return getMergeBase().flatMap(base -> getTip().map(tip -> {
             Queue<Commit> next = new ArrayDeque<>();

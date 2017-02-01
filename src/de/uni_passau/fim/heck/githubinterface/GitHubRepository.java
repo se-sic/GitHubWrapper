@@ -55,10 +55,10 @@ public class GitHubRepository extends Repository {
     private final File dir;
 
     /**
-     * Create a wrapper around a (local) repository with additional information about Github hosted repositories.
+     * Create a wrapper around a (local) repository with additional information about GitHub hosted repositories.
      *
      * @param repo
-     *         the local repository
+     *         the local Repository
      * @param git
      *         the GitWrapper instance to use
      */
@@ -67,7 +67,7 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Create a wrapper around a (local) repository with additional information about Github hosted repositories.
+     * Create a wrapper around a (local) Repository with additional information about GitHub hosted repositories.
      *
      * @param repo
      *         the local repository
@@ -75,7 +75,8 @@ public class GitHubRepository extends Repository {
      *         the GitWrapper instance to use
      * @param oauthToken
      *         a valid oAuth token for GitHub
-     *         (see https://github.com/settings/tokens for information about creating such tokens)
+     *         (see  <a href="https://github.com/settings/tokens">https://github.com/settings/tokens</a>) for
+     *         information about creating such tokens)
      */
     public GitHubRepository(Repository repo, GitWrapper git, String oauthToken) {
         this.repo = repo;
@@ -98,11 +99,11 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Gets a list of all PullRequests.
+     * Gets a List of all PullRequests.
      *
      * @param onlyOpen
-     *         if <code>true</code>, only open pull requests are included
-     * @return optionally a list of PullRequests or an empty Optional, if an error occurred
+     *         if {@code true}, only open PullRequests are included
+     * @return optionally a List of PullRequests or an empty Optional, if an error occurred
      */
     public Optional<List<PullRequest>> getPullRequests(boolean onlyOpen) {
         return getJSONStringFromPath("/pulls?state=all").map(json -> {
@@ -121,11 +122,11 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Gets a list of Issues.
+     * Gets a List of Issues.
      *
      * @param includePullRequests
-     *         if <code>true</code>, will include pull requests as well
-     * @return optionally a list of IssueData or an empty Optional if an error occurred
+     *         if {@code true}, will include {@link PullRequest PullRequests} as well
+     * @return optionally a List of IssueData or an empty Optional if an error occurred
      */
     public Optional<List<IssueData>> getIssues(boolean includePullRequests) {
         return getJSONStringFromPath("/issues?state=all").map(json -> {
@@ -145,11 +146,11 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Returns a list of events for an Issue
+     * Returns a List of Events for an Issue.
      *
      * @param issue
      *         the parent IssueData
-     * @return optionally a list of EventData or an empty Optional if an error occurred
+     * @return optionally a List of EventData or an empty Optional if an error occurred
      */
     Optional<List<EventData>> getEvents(IssueData issue) {
         return getJSONStringFromPath("/issues/" + issue.number + "/events").map(json -> {
@@ -163,7 +164,7 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Returns a list of comments for an Issue
+     * Returns a List of Comments for an Issue.
      *
      * @param issue
      *         the parent IssueData
@@ -181,24 +182,24 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Gets a list of all commits before a given date.
+     * Gets a List of all Commits before a given Date.
      *
      * @param date
-     *         the date until commits are included
-     * @return optionally a list of {@link Commit commits} or an empty optional if the operation failed
+     *         the Date until Commits are included
+     * @return optionally a List of Commits or an empty Optional if the operation failed
      */
     Optional<List<Commit>> getCommitsBeforeDate(Date date) {
         return getCommitsBeforeDate(date, "*");
     }
 
     /**
-     * Gets a list of all commits before a given date on a branch.
+     * Gets a List of all Commits before a given Date on a branch.
      *
      * @param date
-     *         the date until commits are included
+     *         the Date until Commits are included
      * @param branch
-     *         limit commits to this specific branch
-     * @return optionally a list of {@link Commit commits} or an empty optional if the operation failed
+     *         limit Commits to this specific branch
+     * @return optionally a List of Commits or an empty optional if the operation failed
      */
     Optional<List<Commit>> getCommitsBeforeDate(Date date, String branch) {
         DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm");
@@ -217,23 +218,24 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Returns an InputStreamReader reading the JSON data return from the GitHub api called with the api path on the current repository.
+     * Returns an InputStreamReader reading the JSON data returned from the GitHub API called with the API path on the
+     * current repository.
      *
      * @param path
-     *         the api path to call
-     * @return the InputStreamReader on the result
+     *         the API path to call
+     * @return an InputStreamReader on the result
      */
     Optional<String> getJSONStringFromPath(String path) {
         return getJSONStringFromURL(apiBaseURL + path);
     }
 
     /**
-     * Returns a InputStreamReader reading the JSON data return from the GitHub api called with the url.
-     * The caller is responsible, that the url matches this repository.
+     * Returns an InputStreamReader reading the JSON data returned from the GitHub API called with the given URL.
+     * The caller is responsible, that the URL matches this repository.
      *
      * @param urlString
-     *         the url to call
-     * @return the InputStreamReader on the result
+     *         the URL to call
+     * @return an InputStreamReader on the result
      */
     Optional<String> getJSONStringFromURL(String urlString) {
         URL url;
@@ -282,10 +284,11 @@ public class GitHubRepository extends Repository {
 
     /**
      * This method provides a convenient way to convert GitHub-related objects back to their JSON representation
+     * (For now only GitHub related data and commits can be serialized)
      *
      * @param obj
      *         the object to serialize
-     * @return a string canting the JSON representation
+     * @return a String containing the JSON representation
      */
     public String serialize(Object obj) {
         return gson.toJson(obj);
