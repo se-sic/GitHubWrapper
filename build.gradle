@@ -23,6 +23,9 @@ repositories {
 dependencies {
     testCompile group: 'junit', name: 'junit', version: '4.11'
 
+    //null annotation
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.1'
+
     //json
     compile 'com.google.code.gson:gson:2.7'
     compile 'io.gsonfire:gson-fire:1.8.0'

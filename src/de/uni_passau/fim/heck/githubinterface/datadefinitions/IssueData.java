@@ -4,9 +4,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import javax.annotation.Nullable;
 
 import com.google.gson.annotations.SerializedName;
-import com.sun.istack.internal.Nullable;
 import de.uni_passau.fim.heck.githubinterface.IssueDataPostprocessor;
 import de.uni_passau.fim.heck.githubinterface.PullRequest;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
