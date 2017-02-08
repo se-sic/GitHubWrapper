@@ -283,6 +283,24 @@ public class GitHubRepository extends Repository {
     }
 
     /**
+     * Cleans up the working directory.
+     *
+     * @return {@code true} if successful
+     */
+    public boolean cleanup() {
+        Optional<ProcessExecutor.ExecRes> result = git.exec(dir,"clean", "-d", "-x", "-f");
+        Function<ProcessExecutor.ExecRes, Boolean> toBoolean = res -> {
+            if (git.failed(res)) {
+                LOG.warning("Failed to clean directory");
+                return false;
+            }
+            return true;
+        };
+
+        return result.map(toBoolean).orElse(false);
+    }
+
+    /**
      * This method provides a convenient way to convert GitHub-related objects back to their JSON representation
      * (For now only GitHub related data and commits can be serialized)
      *
