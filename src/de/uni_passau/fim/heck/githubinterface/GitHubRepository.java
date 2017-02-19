@@ -206,7 +206,7 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Gets a list of merge commits between the two provided commits.
+     * Gets a list of merge commits between the two provided times.
      *
      * @param start
      *         the timestamp, after which the first commit is included
@@ -216,6 +216,22 @@ public class GitHubRepository extends Repository {
      */
     public Optional<List<Commit>> getMergeCommitsBetween(Date start, Date end) {
         return getCommitsInRange(start, end, "*", true);
+    }
+
+    /**
+     * Gets a list of merge commits reachable from {@code end} and in the history of {@code start}.
+     *
+     * @param start
+     *         the first commit to include
+     * @param end
+     *         the last commit to include
+     * @return optionally a List of Commits, or an empty Optional if an error occurred
+     */
+    public Optional<List<Commit>> getMergeCommitsBetween(Commit start, Commit end) {
+        return getMergeCommits().map(list -> list.stream()
+                .filter(c -> c.equals(start) || c.checkAncestry(start).orElse(false))
+                .filter(c -> c.equals(end) || end.checkAncestry(c).orElse(true))
+                .collect(Collectors.toList()));
     }
 
     /**
