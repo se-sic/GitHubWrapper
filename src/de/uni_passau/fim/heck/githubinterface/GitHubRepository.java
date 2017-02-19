@@ -188,22 +188,55 @@ public class GitHubRepository extends Repository {
      *         the Date until Commits are included
      * @return optionally a List of Commits or an empty Optional if the operation failed
      */
-    Optional<List<Commit>> getCommitsBeforeDate(Date date) {
-        return getCommitsBeforeDate(date, "*");
+    public Optional<List<Commit>> getCommitsBeforeDate(Date date) {
+        return getCommitsInRange(null, date, "*", false);
     }
 
     /**
-     * Gets a List of all Commits before a given Date on a branch.
+     * Gets a List of all Commits before a given Date.
      *
      * @param date
      *         the Date until Commits are included
      * @param branch
      *         limit Commits to this specific branch
+     * @return optionally a List of Commits or an empty Optional if the operation failed
+     */
+    public Optional<List<Commit>> getCommitsBeforeDate(Date date, String branch) {
+        return getCommitsInRange(null, date, branch, false);
+    }
+
+    /**
+     * Gets a list of merge commits between the two provided commits.
+     *
+     * @param start
+     *         the timestamp, after which the first commit is included
+     * @param end
+     *         the timestamp after the last included commit
+     * @return optionally a List of Commits, or an empty Optional if an error occurred
+     */
+    public Optional<List<Commit>> getMergeCommitsBetween(Date start, Date end) {
+        return getCommitsInRange(start, end, "*", true);
+    }
+
+    /**
+     * Gets a List of all Commits before a given Date on a branch.
+     *
+     * @param start
+     *         the Date since which Commits are included
+     * @param end
+     *         the Date until Commits are included
+     * @param branch
+     *         limit Commits to this specific branch
+     * @param onlyMerges
+     *         if {@code true} only merge Commits are included
      * @return optionally a List of Commits or an empty optional if the operation failed
      */
-    Optional<List<Commit>> getCommitsBeforeDate(Date date, String branch) {
+    private Optional<List<Commit>> getCommitsInRange(Date start, Date end, String branch, boolean onlyMerges) {
         DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm");
-        Optional<ProcessExecutor.ExecRes> commitList = git.exec(dir, "log", "--format=tformat:%H", "--branches=" + branch, "--until=" + df.format(date));
+        Optional<ProcessExecutor.ExecRes> commitList = git.exec(dir, "log", "--format=tformat:%H", "--branches=" + branch,
+                end == null ? "" : "--until=" + df.format(end),
+                start == null ? "" : "--since=" + df.format(start),
+                onlyMerges ? "--merges" : "");
         Function<ProcessExecutor.ExecRes, List<Commit>> toCommitList = res -> {
             if (git.failed(res)) {
                 LOG.warning(() -> String.format("Failed to obtain the commits from %s.", this));
@@ -225,7 +258,7 @@ public class GitHubRepository extends Repository {
      *         the API path to call
      * @return an InputStreamReader on the result
      */
-    Optional<String> getJSONStringFromPath(String path) {
+    private Optional<String> getJSONStringFromPath(String path) {
         return getJSONStringFromURL(apiBaseURL + path);
     }
 
@@ -253,7 +286,7 @@ public class GitHubRepository extends Repository {
                 Map<String, List<String>> headers = conn.getHeaderFields();
 
                 boolean noAPICallsRemaining = headers.getOrDefault("X-RateLimit-Remaining",
-                        new ArrayList<String>() {{ add("0"); }}).stream().anyMatch(x -> x.equals("0"));
+                        new ArrayList<>(Collections.singleton("0"))).stream().anyMatch(x -> x.equals("0"));
                 if (noAPICallsRemaining) {
                     Date timeout = new Date(Long.parseLong(headers.get("X-RateLimit-Reset").get(0)) * 1000);
                     LOG.warning("Reached rate limit, try again at " + timeout);
@@ -261,7 +294,7 @@ public class GitHubRepository extends Repository {
                 }
 
                 Optional<String> next = Arrays.stream(headers.getOrDefault("Link",
-                        new ArrayList<String>() {{ add(""); }}
+                        new ArrayList<>(Collections.singleton(""))
                     ).get(0).split(","))
                         .filter(link -> link.contains("next")).findFirst();
                 dataStreams.add(url.openStream());
