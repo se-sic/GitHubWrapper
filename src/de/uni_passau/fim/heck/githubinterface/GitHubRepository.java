@@ -243,7 +243,11 @@ public class GitHubRepository extends Repository {
                 return null;
             }
 
-            return Arrays.stream(res.getStdOutTrimmed().split("\\s+")).map(repo::getCommit).map(Optional::get)
+            if (res.getStdOutTrimmed().isEmpty()) {
+                return new ArrayList<>();
+            }
+
+            return Arrays.stream(res.getStdOutTrimmed().split("\\s+")).map(this::getCommitUnchecked)
                     .collect(Collectors.toList());
         };
 
