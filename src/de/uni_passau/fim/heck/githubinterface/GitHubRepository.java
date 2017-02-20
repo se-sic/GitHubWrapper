@@ -249,10 +249,11 @@ public class GitHubRepository extends Repository {
      */
     private Optional<List<Commit>> getCommitsInRange(Date start, Date end, String branch, boolean onlyMerges) {
         DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm");
-        Optional<ProcessExecutor.ExecRes> commitList = git.exec(dir, "log", "--format=tformat:%H", "--branches=" + branch,
-                end == null ? "" : "--until=" + df.format(end),
-                start == null ? "" : "--since=" + df.format(start),
-                onlyMerges ? "--merges" : "");
+        ArrayList<String> params = new ArrayList<>(Arrays.asList("--format=tformat:%H", "--branches=" + branch));
+        if (end != null) params.add("--until=" + df.format(end));
+        if (start != null) params.add("--since=" + df.format(start));
+        if (onlyMerges) params.add("--merges");
+        Optional<ProcessExecutor.ExecRes> commitList = git.exec(dir, "log", params.toArray(new String[0]));
         Function<ProcessExecutor.ExecRes, List<Commit>> toCommitList = res -> {
             if (git.failed(res)) {
                 LOG.warning(() -> String.format("Failed to obtain the commits from %s.", this));
