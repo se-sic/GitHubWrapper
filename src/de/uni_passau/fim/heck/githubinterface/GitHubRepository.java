@@ -229,8 +229,8 @@ public class GitHubRepository extends Repository {
      */
     public Optional<List<Commit>> getMergeCommitsBetween(Commit start, Commit end) {
         return getMergeCommits().map(list -> list.stream()
-                .filter(c -> c.equals(start) || c.checkAncestry(start).orElse(false))
-                .filter(c -> c.equals(end) || end.checkAncestry(c).orElse(true))
+                .filter(c -> start == null || c.equals(start) || c.checkAncestry(start).orElse(false))
+                .filter(c -> end == null || c.equals(end) || end.checkAncestry(c).orElse(true))
                 .collect(Collectors.toList()));
     }
 
