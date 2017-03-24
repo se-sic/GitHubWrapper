@@ -96,14 +96,7 @@ public class PullRequest extends Reference {
      * @return optionally the Commit that constitutes the merge base, or an empty Optional, if the operations failed
      */
     public Optional<Commit> getMergeBase() {
-        Optional<Commit> gitBase = getMergeTarget().flatMap(this::getMergeBase);
-        Commit githubBase = repo.getCommitUnchecked(issue.base.sha);
-
-        if (!gitBase.map(a -> a.equals(githubBase)).orElse(false)) {
-            LOG.warning("GitHub does not match local findings about mergebase!");
-            return Optional.empty();
-        }
-        return gitBase;
+        return getMergeTarget().flatMap(this::getMergeBase);
     }
 
     @Override
@@ -152,8 +145,10 @@ public class PullRequest extends Reference {
             do {
                 commits.add(c);
                 c.getParents().ifPresent(next::addAll);
-                c = next.poll();
-            } while(c != null && !c.equals(base));
+                do {
+                    c = next.poll();
+                } while (c != null && c.equals(base));
+            } while(c != null);
             return commits;
         }));
     }
