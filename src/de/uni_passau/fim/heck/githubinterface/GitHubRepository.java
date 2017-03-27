@@ -30,6 +30,7 @@ import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.State;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.UserData;
 import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
 import de.uni_passau.fim.seibt.gitwrapper.repo.BlameLine;
@@ -53,6 +54,8 @@ public class GitHubRepository extends Repository {
     private final String oauthToken;
     private final GitWrapper git;
     private final File dir;
+
+    private List<PullRequest> pullRequests;
 
     /**
      * Create a wrapper around a (local) repository with additional information about GitHub hosted repositories.
@@ -99,26 +102,16 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Gets a List of all PullRequests.
+     * Gets a List of PullRequests.
      *
-     * @param onlyOpen
-     *         if {@code true}, only open PullRequests are included
+     * @param filter
+     *         The state of the PullRequests to include (see {@link State#includes(State, State)})
      * @return optionally a List of PullRequests or an empty Optional, if an error occurred
      */
-    public Optional<List<PullRequest>> getPullRequests(boolean onlyOpen) {
-        return getJSONStringFromPath("/pulls?state=all").map(json -> {
-            ArrayList<PullRequestData> data;
-            try {
-                data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() {}.getType());
-            } catch (JsonSyntaxException e) {
-                LOG.warning("Encountered invalid JSON: " + json);
-                return null;
-            }
-            return data.stream().filter(pr -> !(pr.state.equals("closed") && onlyOpen)).map(pr ->
-                    new PullRequest(this, pr.head.ref, pr.head.repo.full_name,
-                            pr.head.repo.html_url, pr.state, repo.getBranch(pr.base.ref).get(), pr)
-            ).collect(Collectors.toList());
-        });
+    public Optional<List<PullRequest>> getPullRequests(State filter) {
+        getPullRequests();
+        if (pullRequests == null) return Optional.empty();
+        return Optional.of(pullRequests.stream().filter(pr -> State.includes(pr.getState(), filter)).collect(Collectors.toList()));
     }
 
     /**
@@ -232,6 +225,27 @@ public class GitHubRepository extends Repository {
                 .filter(c -> start == null || c.equals(start) || c.checkAncestry(start).orElse(false))
                 .filter(c -> end == null || c.equals(end) || end.checkAncestry(c).orElse(true))
                 .collect(Collectors.toList()));
+    }
+
+    /**
+     * Gets the list of pull requests from GitHub, if it is not already cached.
+     */
+    private void getPullRequests() {
+        if (pullRequests == null) {
+            getJSONStringFromPath("/pulls?state=all").ifPresent(json -> {
+                ArrayList<PullRequestData> data;
+                try {
+                    data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() { }.getType());
+                } catch (JsonSyntaxException e) {
+                    LOG.warning("Encountered invalid JSON: " + json);
+                    return;
+                }
+                pullRequests = new ArrayList<>(data.stream().map(pr ->
+                        new PullRequest(this, pr.head.ref, pr.head.repo.full_name, pr.head.repo.html_url,
+                                State.getPRState(pr.state, pr.merged_at != null), repo.getBranch(pr.base.ref).get(), pr)
+                ).collect(Collectors.toList()));
+            });
+        }
     }
 
     /**

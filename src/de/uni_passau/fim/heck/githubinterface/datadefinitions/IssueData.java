@@ -6,6 +6,7 @@ import java.util.Date;
 import java.util.List;
 import javax.annotation.Nullable;
 
+import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 import de.uni_passau.fim.heck.githubinterface.IssueDataPostprocessor;
 import de.uni_passau.fim.heck.githubinterface.PullRequest;
@@ -29,7 +30,8 @@ public class IssueData {
     /**
      * Information about the state of the issue.
      */
-    public String state;
+    @Expose(deserialize = false)
+    public State state;
 
     /**
      * The date and time the issue was created.

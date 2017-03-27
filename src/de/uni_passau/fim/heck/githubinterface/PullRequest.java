@@ -12,6 +12,7 @@ import java.util.logging.Logger;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.State;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Reference;
 
@@ -19,7 +20,7 @@ public class PullRequest extends Reference {
 
     private static final Logger LOG = Logger.getLogger(PullRequest.class.getCanonicalName());
 
-    private final String state;
+    private final State state;
     private final Reference targetBranch;
 
     private final GitHubRepository repo;
@@ -43,7 +44,7 @@ public class PullRequest extends Reference {
      * @param issue
      *         the corresponding pull request in GitHub
      */
-    PullRequest(GitHubRepository repo, String id, String remoteName, String forkURL, String state, Reference targetBranch, PullRequestData issue) {
+    PullRequest(GitHubRepository repo, String id, String remoteName, String forkURL, State state, Reference targetBranch, PullRequestData issue) {
         super(repo, remoteName + "/" + id);
         this.state = state;
         this.targetBranch = targetBranch;
@@ -109,7 +110,7 @@ public class PullRequest extends Reference {
      *
      * @return the state as the String used by GitHub
      */
-    public String getState() {
+    public State getState() {
         return state;
     }
 
