@@ -64,9 +64,14 @@ public class PullRequest extends Reference {
         // to handle all merged pull requests differently by looking at the parents of the actual merge and using the
         // parent that is not in the tip of the pull request, since that is the commit that was merged into
         if (isMerged()) {
-            return Optional.of(repo.getCommitUnchecked(getMerge().get().commit_id)
+            return Optional.ofNullable(repo.getCommitUnchecked(getMerge().map(m -> m.commit_id).orElse(null))
                     .getParents().orElseGet(ArrayList::new).stream().filter(p -> !p.equals(getTip().orElse(null)))
                     .findFirst().orElse(null));
+        }
+
+        // If the branch that was merged *into* was deleted, we don't have a valid target branch.
+        if (targetBranch == null) {
+            return Optional.empty();
         }
 
         Optional<Date> date = getTip().map(c -> Date.from(c.getAuthorTime().toInstant()));
@@ -115,7 +120,7 @@ public class PullRequest extends Reference {
     }
 
     private boolean isMerged() {
-        return state.equals("closed") && getMerge().isPresent();
+        return state.equals(State.CLOSED) && getMerge().isPresent();
     }
 
     private Optional<EventData.ReferencedEventData> getMerge() {

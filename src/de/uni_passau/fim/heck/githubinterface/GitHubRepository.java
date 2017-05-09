@@ -242,7 +242,7 @@ public class GitHubRepository extends Repository {
                 }
                 pullRequests = new ArrayList<>(data.stream().map(pr ->
                         new PullRequest(this, pr.head.ref, pr.head.repo.full_name, pr.head.repo.html_url,
-                                State.getPRState(pr.state, pr.merged_at != null), repo.getBranch(pr.base.ref).get(), pr)
+                                State.getPRState(pr.state, pr.merged_at != null), repo.getBranch(pr.base.ref).orElse(null), pr)
                 ).collect(Collectors.toList()));
             });
         }
