@@ -1,17 +1,18 @@
-#GitHubWrapper
+# GitHubWrapper
 
-An extensions to the [GitWrapper](https://github.com/se-passau/GitWrapper) project for interaction with the GitHub issue and pull request system.
+An extensions to the [GitWrapper](https://github.com/se-passau/GitWrapper) project for interaction with the GitHub issue and pull request API.
 
-##Setup
+## Setup
 
 GitHubWrapper uses the Gradle build system.
 
 
-###Dependencies 
+### Dependencies 
 
 Since this is an extension, [GitWrapper](https://github.com/se-passau/GitWrapper) needs to be present in the parent directory.
+See there for additional information about setting up GitWrapper.
 
-###Integration into other projects
+### Integration into other projects
 
 Using `./gradlew` build will assemble a .jar file containing the library in the `build/libs` directory. The dependencies of the library may be displayed using `./gradlew dependencies --configuration runtime`.
 
@@ -19,29 +20,31 @@ For gradle based projects only extend your `settings.gradle` and `build.gradle` 
 
 settings.gradle
 
-`settings.gradle` 
+**settings.gradle**
 ```groovy
 includeFlat 'GitHubWrapper' // The name of the directory containing your clone of GitWrapper.
 
 build.gradle
 ```
 
-`build.gradle`
+**build.gradle**
 ```groovy
 dependencies {
     compile project(':GitHubWrapper')
 }
 ```
 
-##Usage
+## Usage
+
 To get access to additional data provided by the GitHub API, you can wrap an existing git repository. 
 For information about access to local git data please refer to the GitWrapper project.
 
-To get more than the unauthenticated limit of 60 requests per hour, you need to supply your own OAuth token.
+*Note: To get more than the unauthenticated limit of 60 requests per hour, you need to supply your own OAuth token.*
 
-The created `GitHubRepository` object then allows access to the local repository copy using native git calls as well as read only access to the GitHub API for issues (including comments and events) and pull requests.
+The `GitHubRepository` object then allows access to the local repository copy using native git calls as well as read only access to the GitHub API for issues (including comments and events) and pull requests.
 
-###Example
+### Example
+
 ```java
 GitWrapper git;
  
@@ -54,7 +57,7 @@ try {
     return;
 }
 
-GitHubRepository repo = git.clone(new File("."), "git@github.com:se-passau/GitHubWrapper.git", false).map(baseRepo -> new GitHubRepository(baseRepo, git, "token"));
+GitHubRepository repo = git.clone(new File("."), "git@github.com:se-passau/GitHubWrapper.git", false).map(baseRepo -> new GitHubRepository(baseRepo, git));
  
 // Print number of pull requests
 repo.getPullRequests(State.ANY).ifPresent(prs -> System.out.println(prs.size()));
