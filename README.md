@@ -39,7 +39,8 @@ dependencies {
 To get access to additional data provided by the GitHub API, you can wrap an existing git repository. 
 For information about access to local git data please refer to the GitWrapper project.
 
-*Note: To get more than the unauthenticated limit of 60 requests per hour, you need to supply your own OAuth token.*
+*Note: To get more than the unauthenticated limit of 60 requests per hour, you need to supply your own OAuth token. 
+For furhter information and to generate your own token visit [https://github.com/settings/tokens](https://github.com/settings/tokens).*
 
 The `GitHubRepository` object then allows access to the local repository copy using native git calls as well as read only access to the GitHub API for issues (including comments and events) and pull requests.
 
