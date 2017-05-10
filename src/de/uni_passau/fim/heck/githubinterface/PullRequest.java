@@ -16,6 +16,10 @@ import de.uni_passau.fim.heck.githubinterface.datadefinitions.State;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Reference;
 
+/**
+ * A git reference (branch pointer) providing access to the GitHub data about the pull requests represented by this
+ * branch.
+ */
 public class PullRequest extends Reference {
 
     private static final Logger LOG = Logger.getLogger(PullRequest.class.getCanonicalName());
@@ -34,7 +38,7 @@ public class PullRequest extends Reference {
      * @param id
      *         the branch name
      * @param remoteName
-     *         the identifier (&lt;user&gt;/&lt;branch&gt;)
+     *         the identifier (&lt;user&gt;/&lt;repo&gt;)
      * @param forkURL
      *         the url of the forked repo
      * @param state
@@ -64,13 +68,16 @@ public class PullRequest extends Reference {
         // to handle all merged pull requests differently by looking at the parents of the actual merge and using the
         // parent that is not in the tip of the pull request, since that is the commit that was merged into
         if (isMerged()) {
-            return Optional.ofNullable(repo.getCommitUnchecked(getMerge().map(m -> m.commit_id).orElse(null))
-                    .getParents().orElseGet(ArrayList::new).stream().filter(p -> !p.equals(getTip().orElse(null)))
-                    .findFirst().orElse(null));
+            return repo.getCommitUnchecked(
+                    getMerge().map(m -> m.commit_id).orElseGet(() -> { LOG.warning("Could not find merge for PR " + id); return ""; }))
+                    .getParents().orElseGet(() -> { LOG.warning("Could not find parents of the merge of PR " + id); return new ArrayList<>();}).stream()
+                    .filter(p -> !p.equals(getTip().orElseGet(() -> { LOG.warning("Could not find tip of PR " + id); return null; })))
+                    .findFirst().map(x -> x);
         }
 
         // If the branch that was merged *into* was deleted, we don't have a valid target branch.
         if (targetBranch == null) {
+            LOG.fine("Target branch was probably deleted.");
             return Optional.empty();
         }
 
@@ -97,7 +104,7 @@ public class PullRequest extends Reference {
     }
 
     /**
-     * Determines the merge base between the merge target ({@link #getMergeTarget}) and the tip ({@link #getTip})
+     * Determines the merge base between the merge target ({@link #getMergeTarget}) and the tip ({@link #getTip}).
      *
      * @return optionally the Commit that constitutes the merge base, or an empty Optional, if the operations failed
      */
@@ -119,10 +126,21 @@ public class PullRequest extends Reference {
         return state;
     }
 
+    /**
+     * Returns {@code true} if there was a {@link State#CLOSED} event and there is a
+     * {@link EventData.ReferencedEventData} instance representing the merge.
+     *
+     * @return {@code true}, if this PullRequest is merged
+     */
     private boolean isMerged() {
         return state.equals(State.CLOSED) && getMerge().isPresent();
     }
 
+    /**
+     * Gets the EventData corresponding to the merge.
+     *
+     * @return optionally the ReferencedEventData for the merge, or an empty Optional if there is none
+     */
     private Optional<EventData.ReferencedEventData> getMerge() {
         // find a merge event
         return issue.getEventsList().stream().filter(e -> e.event.equals("merged")).findFirst().map(e -> ((EventData.ReferencedEventData) e));
@@ -138,9 +156,11 @@ public class PullRequest extends Reference {
     }
 
     /**
-     * Returns a List of all Commits that are included in this PullRequest.
+     * Returns a List of all Commits that are included in this PullRequest but not in the history of the
+     * {@link #getMergeTarget() target}.
      *
      * @return optionally a List of the Commits, or an empty Optional, if the operation failed
+     * @see #getMergeBase()
      */
     public Optional<List<Commit>> getCommits() {
         return getMergeBase().flatMap(base -> getTip().map(tip -> {

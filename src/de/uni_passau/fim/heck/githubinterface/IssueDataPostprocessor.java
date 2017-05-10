@@ -19,12 +19,18 @@ import io.gsonfire.PostProcessor;
 
 /**
  * The IssueDataPostprocessor extracts additional information from issues and populated IssueData instances with other
- * git-related information
+ * git-related information.
  */
 public class IssueDataPostprocessor implements PostProcessor<IssueData> {
 
     private final GitHubRepository repo;
 
+    /**
+     * Creates a new IssueDataPostprocessor for handling Issues specific to the provided GitHubRepository.
+     *
+     * @param repo
+     *         the repository
+     */
     IssueDataPostprocessor(GitHubRepository repo) {
         this.repo = repo;
     }
@@ -58,7 +64,6 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
                 .filter(eventData -> eventData instanceof EventData.ReferencedEventData)
                 .map(eventData -> ((EventData.ReferencedEventData) eventData).commit_id);
 
-
         return Stream.concat(Stream.concat(commentCommits, referencedCommits), extractSHA1s(issue.body).stream())
                 .map(repo::getCommit)
 
@@ -90,7 +95,5 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
     }
 
     @Override
-    public void postSerialize(JsonElement result, IssueData src, Gson gson) {
-
-    }
+    public void postSerialize(JsonElement result, IssueData src, Gson gson) { }
 }

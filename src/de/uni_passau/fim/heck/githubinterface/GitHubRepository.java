@@ -43,6 +43,10 @@ import de.uni_passau.fim.seibt.gitwrapper.repo.Repository;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Status;
 import io.gsonfire.GsonFireBuilder;
 
+/**
+ * A GitHubRepository wraps a (local) Repository to give access to the GitHub API to provide {@link PullRequestData} and
+ * {@link IssueData}.
+ */
 public class GitHubRepository extends Repository {
 
     private static final Logger LOG = Logger.getLogger(GitHubRepository.class.getCanonicalName());

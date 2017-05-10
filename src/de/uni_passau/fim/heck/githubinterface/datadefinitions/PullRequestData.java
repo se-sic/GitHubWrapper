@@ -24,6 +24,9 @@ public class PullRequestData extends IssueData {
      */
     public Date merged_at;
 
+    /**
+     * For use by the deserializer.
+     */
     public PullRequestData() {
         this.isPullRequest = true;
     }
