@@ -3,6 +3,8 @@ package de.uni_passau.fim.heck.githubinterface;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -15,6 +17,7 @@ import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.State;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
+import de.uni_passau.fim.seibt.gitwrapper.repo.LocalRepository;
 import io.gsonfire.PostProcessor;
 
 /**
@@ -65,7 +68,16 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
                 .map(eventData -> ((EventData.ReferencedEventData) eventData).commit_id);
 
         return Stream.concat(Stream.concat(commentCommits, referencedCommits), extractSHA1s(issue.body).stream())
-                .map(repo::getCommit)
+                .map(hash-> {
+                    // Disable logging for this method call, so false positives don't reported
+                    Logger log = Logger.getLogger(LocalRepository.class.getCanonicalName());
+                    Level level = log.getLevel();
+                    log.setLevel(Level.OFF);
+                    Optional<Commit> c = repo.getCommit(hash);
+                    log.setLevel(level);
+
+                    return c;
+                })
 
                 // filter out false positive matches on normal words (and other errors)
                 .filter(Optional::isPresent)
