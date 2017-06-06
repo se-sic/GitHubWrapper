@@ -20,7 +20,7 @@ public class PullRequestData extends IssueData {
     public RefData base;
 
     /**
-     * The date and time the issue was merged, or null if it was declined or is still open.
+     * The date and time the PullRequest was merged, or null if it was declined or is still open.
      */
     public Date merged_at;
 

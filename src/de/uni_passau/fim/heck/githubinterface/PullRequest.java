@@ -127,13 +127,13 @@ public class PullRequest extends Reference {
     }
 
     /**
-     * Returns {@code true} if there was a {@link State#CLOSED} event and there is a
-     * {@link EventData.ReferencedEventData} instance representing the merge.
+     * Returns {@code true} if there was an event which closed the PullRequest and there is a merge date in the
+     * {@link PullRequestData}.
      *
      * @return {@code true}, if this PullRequest is merged
      */
     private boolean isMerged() {
-        return state.equals(State.CLOSED) && getMerge().isPresent();
+        return state == State.MERGED;
     }
 
     /**
