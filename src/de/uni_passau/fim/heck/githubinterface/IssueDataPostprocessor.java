@@ -1,6 +1,7 @@
 package de.uni_passau.fim.heck.githubinterface;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.logging.Level;
@@ -94,6 +95,9 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
      * @return a List of all valid hashes
      */
     private List<String> extractSHA1s(String text) {
+        if (text == null) {
+            return Collections.emptyList();
+        }
         Pattern sha1Pattern = Pattern.compile("([0-9a-f]{5,40})");
         Matcher matcher = sha1Pattern.matcher(text);
 
