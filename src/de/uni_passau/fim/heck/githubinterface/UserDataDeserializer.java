@@ -23,7 +23,8 @@ import de.uni_passau.fim.heck.githubinterface.datadefinitions.UserData;
  */
 public class UserDataDeserializer implements JsonDeserializer<UserData> {
 
-    private static Map<String, UserData> users = new HashMap<>();
+    private static Map<String, UserData> strictUsers = new HashMap<>();
+    private static Map<String, UserData> guessedUsers = new HashMap<>();
     private final GitHubRepository repo;
 
     UserDataDeserializer(GitHubRepository repo) {
@@ -33,12 +34,15 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
     @Override
     public UserData deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
         String username = json.getAsJsonObject().get("login").getAsString();
-        if (users.containsKey(username)) return users.get(username);
+
+        Map<String, UserData> lookupList = repo.allowGuessing() ? guessedUsers : strictUsers;
+
+        if (lookupList.containsKey(username)) return lookupList.get(username);
 
         UserData user = new UserData();
         user.username = username;
-        user.email = guessEmails(json);
-        users.put(username, user);
+        user.email = determineEmail(json);
+        lookupList.put(username, user);
         return user;
     }
 
@@ -51,7 +55,7 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
      *         the JsonElement representing the data about a user
      * @return the most probable email for this user
      */
-    private String guessEmails(JsonElement user) {
+    private String determineEmail(JsonElement user) {
         JsonParser parser = new JsonParser();
 
         // first look at profile
