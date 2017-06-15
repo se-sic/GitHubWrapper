@@ -60,6 +60,9 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
         JsonElement email = data.getAsJsonObject().get("email");
         if (!(email instanceof JsonNull)) return email.getAsString();
 
+        // if we don't want to guess for emails, stop here and don't look at user history
+        if (repo.allowGuessing()) return "";
+
         // get list of recent pushes
         Optional<String> eventsData = repo.getJSONStringFromURL(user.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));
         data = parser.parse(eventsData.orElse(""));

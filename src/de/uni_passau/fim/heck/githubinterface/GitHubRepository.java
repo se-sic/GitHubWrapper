@@ -60,6 +60,7 @@ public class GitHubRepository extends Repository {
     private final File dir;
 
     private List<PullRequest> pullRequests;
+    private boolean allowGuessing;
 
     /**
      * Create a wrapper around a (local) repository with additional information about GitHub hosted repositories.
@@ -370,6 +371,27 @@ public class GitHubRepository extends Repository {
         };
 
         return result.map(toBoolean).orElse(false);
+    }
+
+    /**
+     * Gets, if strict email determination is required.
+     *
+     * @return {@code true} if guessing of user email is allowed
+     * @see #allowGuessing(boolean)
+     */
+    boolean allowGuessing() {
+        return allowGuessing;
+    }
+
+    /**
+     * Setter for toggling strict email determination method.
+     *
+     * @param guess
+     *         if {@code true}, guessing of user email is allowed
+     * @see #allowGuessing()
+     */
+    public void allowGuessing(boolean guess) {
+        allowGuessing = guess;
     }
 
     /**
