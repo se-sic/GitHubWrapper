@@ -310,7 +310,7 @@ public class GitHubRepository extends Repository {
      *         the URL to call
      * @return an InputStreamReader on the result
      */
-    Optional<String> getJSONStringFromURL(String urlString) {
+    public Optional<String> getJSONStringFromURL(String urlString) {
         URL url;
         String json;
         try {

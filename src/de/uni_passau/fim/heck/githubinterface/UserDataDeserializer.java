@@ -41,7 +41,7 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
 
         UserData user = new UserData();
         user.username = username;
-        user.email = determineEmail(json);
+        insertNameAndMail(json, user);
         lookupList.put(username, user);
         return user;
     }
@@ -51,24 +51,32 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
      * email by looking at the history for this user and getting the email which is used most often in the list of
      * pushed commits.
      *
-     * @param user
-     *         the JsonElement representing the data about a user
-     * @return the most probable email for this user
+     * @param user the JsonElement representing the data about a user
      */
-    private String determineEmail(JsonElement user) {
+    private void insertNameAndMail(JsonElement json, UserData user) {
         JsonParser parser = new JsonParser();
 
         // first look at profile
-        Optional<String> userData = repo.getJSONStringFromURL(user.getAsJsonObject().get("url").getAsString());
+        Optional<String> userData = repo.getJSONStringFromURL(json.getAsJsonObject().get("url").getAsString());
         JsonElement data = parser.parse(userData.orElse(""));
         JsonElement email = data.getAsJsonObject().get("email");
-        if (!(email instanceof JsonNull)) return email.getAsString();
+        JsonElement name = data.getAsJsonObject().get("name");
+        if (!(name instanceof JsonNull)) {
+            user.name = name.getAsString();
+        }
+        if (!(email instanceof JsonNull)) {
+            user.email = email.getAsString();
+            return;
+        }
 
         // if we don't want to guess for emails, stop here and don't look at user history
-        if (!repo.allowGuessing()) return "";
+        if (!repo.allowGuessing()) {
+            user.email = "";
+            return;
+        }
 
         // get list of recent pushes
-        Optional<String> eventsData = repo.getJSONStringFromURL(user.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));
+        Optional<String> eventsData = repo.getJSONStringFromURL(json.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));
         data = parser.parse(eventsData.orElse(""));
 
         Map<String, Integer> emails = new HashMap<>();
@@ -77,18 +85,24 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
             if (event.getAsJsonPrimitive("type").getAsString().equals("PushEvent")) {
                 event.getAsJsonObject("payload")
                         .getAsJsonArray("commits")
-                        .forEach(commit -> emails.merge(commit.getAsJsonObject()
-                                .getAsJsonObject("author")
-                                .getAsJsonPrimitive("email")
-                                .getAsString(), 1, (val, newVal) -> val + newVal));
+                        .forEach(commit -> {
+                                    if (commit.getAsJsonObject().getAsJsonObject("author").getAsJsonPrimitive("name").equals(json.getAsJsonObject().get("login")) ||
+                                            commit.getAsJsonObject().getAsJsonObject("author").getAsJsonPrimitive("name").equals(json.getAsJsonObject().get("name")))
+                                        emails.merge(commit.getAsJsonObject().getAsJsonObject("author")
+                                                .getAsJsonPrimitive("email").getAsString(), 1, (val, newVal) -> val + newVal);
+                                }
+                        );
             }
         });
 
         List<Map.Entry<String, Integer>> posMails = new ArrayList<>(emails.entrySet());
-        if (posMails.isEmpty()) return "";
+        if (posMails.isEmpty()) {
+            user.email = "";
+            return;
+        }
 
         // get email with most entries
         posMails.sort(Comparator.comparingInt(Map.Entry::getValue));
-        return posMails.get(posMails.size() - 1).getKey();
+        user.email = posMails.get(posMails.size() - 1).getKey();
     }
 }
