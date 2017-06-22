@@ -16,6 +16,15 @@ sourceSets {
     }
 }
 
+jar {
+    manifest {
+        attributes 'Main-Class': 'de.uni_passau.fim.noemmer.run_issues.IssuesMain'
+    }
+    baseName = project.name + '-all'
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+}
+
+
 repositories {
     mavenCentral()
 }
@@ -35,4 +44,9 @@ dependencies {
 
     // The tooling API need an SLF4J implementation available at runtime, replace this with any other implementation
     runtime 'org.slf4j:slf4j-simple:1.7.21'
+
+    // https://mvnrepository.com/artifact/org.apache.httpcomponents/httpclient
+    compile group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.5.3'
+
+
 }
