@@ -72,6 +72,13 @@ public class IssuesMain {
     private static void insertUserIds(JsonObject issueJson) {
         Set<Map.Entry<String, JsonElement>> entries = issueJson.entrySet();
         for (Map.Entry<String, JsonElement> entry : entries) {
+            if(entry.getValue() instanceof JsonArray) {
+                ((JsonArray) entry.getValue()).forEach(j -> {
+                    if(j instanceof JsonObject) {
+                        insertUserIds((JsonObject) j);
+                    }
+                });
+            }
             if (entry.getValue() instanceof JsonObject && !entry.getKey().equals("user")) {
                 System.out.println("Were in recursive");
                 insertUserIds((JsonObject) entry.getValue());
@@ -97,7 +104,7 @@ public class IssuesMain {
         HttpClient client = HttpClientBuilder.create().build();
         HttpPost post = new HttpPost("http://" + idServiceUrl + "/post_user_id");
         try {
-            HttpResponse response = getHttpResponse(username, email, client, post);
+            HttpResponse response = getHttpResponse(name == null ? username : name, email, client, post);
             BufferedReader rd = new BufferedReader(new InputStreamReader(
                     response.getEntity().getContent()));
             StringBuilder builder = new StringBuilder();
@@ -106,17 +113,8 @@ public class IssuesMain {
                 builder.append(line);
             }
             rd.close();
-            if (builder.toString().contains("error") && name != null) {
-                response = getHttpResponse(name, email, client, post);
-                rd = new BufferedReader(new InputStreamReader(response.getEntity().getContent()));
-                builder = new StringBuilder();
-                while ((line = rd.readLine()) != null) {
-                    builder.append(line);
-                }
-                rd.close();
-            }
             if(builder.toString().contains("error")) {
-                response = getHttpResponse(name, username + "@default.com", client, post);
+                response = getHttpResponse(name == null ? username : name, username + "@default.com", client, post);
                 rd = new BufferedReader(new InputStreamReader(response.getEntity().getContent()));
                 builder = new StringBuilder();
                 while ((line = rd.readLine()) != null) {
@@ -124,7 +122,6 @@ public class IssuesMain {
                 }
                 rd.close();
             }
-
             JsonParser parser = new JsonParser();
             System.out.println(builder.toString());
             JsonObject json = parser.parse(builder.toString()).getAsJsonObject();

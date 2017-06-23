@@ -1,12 +1,8 @@
 package de.uni_passau.fim.heck.githubinterface;
 
 import java.lang.reflect.Type;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
@@ -79,30 +75,29 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
         Optional<String> eventsData = repo.getJSONStringFromURL(json.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));
         data = parser.parse(eventsData.orElse(""));
 
-        Map<String, Integer> emails = new HashMap<>();
+        List<String> emails = new ArrayList<>();
         data.getAsJsonArray().forEach(e -> {
             JsonObject event = e.getAsJsonObject();
             if (event.getAsJsonPrimitive("type").getAsString().equals("PushEvent")) {
                 event.getAsJsonObject("payload")
                         .getAsJsonArray("commits")
                         .forEach(commit -> {
-                                    if (commit.getAsJsonObject().getAsJsonObject("author").getAsJsonPrimitive("name").equals(json.getAsJsonObject().get("login")) ||
-                                            commit.getAsJsonObject().getAsJsonObject("author").getAsJsonPrimitive("name").equals(json.getAsJsonObject().get("name")))
-                                        emails.merge(commit.getAsJsonObject().getAsJsonObject("author")
-                                                .getAsJsonPrimitive("email").getAsString(), 1, (val, newVal) -> val + newVal);
+                                    if (commit.getAsJsonObject().getAsJsonObject("author").getAsJsonPrimitive("name").getAsString().equals(user.username) ||
+                                            commit.getAsJsonObject().getAsJsonObject("author").getAsJsonPrimitive("name").getAsString().equals(user.name))
+                                        emails.add(commit.getAsJsonObject().getAsJsonObject("author")
+                                                .getAsJsonPrimitive("email").getAsString());
                                 }
                         );
             }
         });
-
-        List<Map.Entry<String, Integer>> posMails = new ArrayList<>(emails.entrySet());
-        if (posMails.isEmpty()) {
+        if (emails.isEmpty()) {
             user.email = "";
             return;
         }
+        Map<String, Long> counts = emails.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
 
         // get email with most entries
-        posMails.sort(Comparator.comparingInt(Map.Entry::getValue));
-        user.email = posMails.get(posMails.size() - 1).getKey();
+        user.email = Collections.max(counts.entrySet(), Comparator.comparingLong(Map.Entry::getValue)).getKey();
+        System.out.println("Success: " + user.email);
     }
 }
