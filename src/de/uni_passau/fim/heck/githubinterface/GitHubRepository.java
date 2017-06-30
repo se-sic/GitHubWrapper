@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.logging.Logger;
@@ -27,6 +28,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommitData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
@@ -245,9 +247,25 @@ public class GitHubRepository extends Repository {
                     LOG.warning("Encountered invalid JSON: " + json);
                     return;
                 }
-                pullRequests = new ArrayList<>(data.stream().map(pr ->
-                        new PullRequest(this, pr.head.ref, pr.head.repo.full_name, pr.head.repo.html_url,
-                                State.getPRState(pr.state, pr.merged_at != null), repo.getBranch(pr.base.ref).orElse(null), pr)
+                pullRequests = new ArrayList<>(data.stream().map(pr -> {
+                    Optional<String> commitData = getJSONStringFromPath("/pulls/" + pr.number + "/commits");
+                    //noinspection unchecked
+                    List<Commit> commits = commitData.map(cd ->
+                            ((ArrayList<CommitData>) gson.fromJson(cd, new TypeToken<ArrayList<CommitData>>() { }.getType())).stream().map(c ->
+                                    getCommit(c.sha).orElseGet(() -> {
+                                        LOG.warning(String.format("Invalid commit %s from PR %d", c.sha, pr.number));
+                                        return null;
+                                    }))
+                                .filter(Objects::nonNull).collect(Collectors.toList()))
+                        .orElseGet(() -> {
+                            LOG.warning(String.format("Could not get commits for PR %d", pr.number));
+                            return Collections.emptyList();
+                        });
+
+                    return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, pr.head.repo.html_url,
+                            State.getPRState(pr.state, pr.merged_at != null), repo.getBranch(pr.base.ref).orElse(null),
+                            commits, pr);
+                        }
                 ).collect(Collectors.toList()));
             });
         }

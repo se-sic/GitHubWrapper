@@ -26,6 +26,7 @@ public class PullRequest extends Reference {
 
     private final State state;
     private final Reference targetBranch;
+    private List<Commit> commits;
 
     private final GitHubRepository repo;
     private final PullRequestData issue;
@@ -45,13 +46,16 @@ public class PullRequest extends Reference {
      *         the sate of the pull request
      * @param targetBranch
      *         the target branch
+     * @param commits
+     *         A list of Commits included in this PullRequest
      * @param issue
      *         the corresponding pull request in GitHub
      */
-    PullRequest(GitHubRepository repo, String id, String remoteName, String forkURL, State state, Reference targetBranch, PullRequestData issue) {
+    PullRequest(GitHubRepository repo, String id, String remoteName, String forkURL, State state, Reference targetBranch, List<Commit> commits, PullRequestData issue) {
         super(repo, remoteName + "/" + id);
         this.state = state;
         this.targetBranch = targetBranch;
+        this.commits = commits;
         repo.addRemote(remoteName, forkURL);
         this.repo = repo;
         this.issue = issue;
@@ -160,9 +164,10 @@ public class PullRequest extends Reference {
      * {@link #getMergeTarget() target}.
      *
      * @return optionally a List of the Commits, or an empty Optional, if the operation failed
-     * @see #getMergeBase()
+     * @see #getMergeBase(), {@link #getCommits()}
      */
-    public Optional<List<Commit>> getCommits() {
+    @Deprecated
+    public Optional<List<Commit>> getCommitsLocal() {
         return getMergeBase().flatMap(base -> getTip().map(tip -> {
             Queue<Commit> next = new ArrayDeque<>();
             List<Commit> commits = new ArrayList<>();
@@ -177,5 +182,15 @@ public class PullRequest extends Reference {
             } while(c != null);
             return commits;
         }));
+    }
+
+    /**
+     * Returns a List of all Commits that are included in this PullRequest
+     *
+     * @return a List of the Commits
+     * @see #getMergeBase()
+     */
+    public List<Commit> getCommits() {
+        return commits;
     }
 }
