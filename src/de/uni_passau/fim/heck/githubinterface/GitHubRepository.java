@@ -248,6 +248,16 @@ public class GitHubRepository extends Repository {
                     return;
                 }
                 pullRequests = new ArrayList<>(data.stream().map(pr -> {
+                    State state = State.getPRState(pr.state, pr.merged_at != null);
+
+                    // if the fork was deleted and the PR was rejected, we cannot get verify the commits, so the PR is dropped
+                    if (pr.head.repo == null && state == State.DECLINED) {
+                        LOG.warning(String.format("PR %s has no fork repo and was not merged, therefore it was dropped!", pr.number));
+                        return null;
+                    }
+
+                    Reference target = repo.getBranch(pr.base.ref).orElse(null);
+
                     Optional<String> commitData = getJSONStringFromPath("/pulls/" + pr.number + "/commits");
                     //noinspection unchecked
                     List<Commit> commits = commitData.map(cd ->
@@ -262,11 +272,14 @@ public class GitHubRepository extends Repository {
                             return Collections.emptyList();
                         });
 
+                    if (pr.head.repo == null) {
+                        LOG.warning(String.format("PR %s has no fork repo", pr.number));
+                        return new PullRequest(this, target, commits, pr);
+                    }
                     return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, pr.head.repo.html_url,
-                            State.getPRState(pr.state, pr.merged_at != null), repo.getBranch(pr.base.ref).orElse(null),
-                            commits, pr);
-                        }
-                ).collect(Collectors.toList()));
+                            state, target, commits, pr);
+
+                }).filter(Objects::nonNull).collect(Collectors.toList()));
             });
         }
     }

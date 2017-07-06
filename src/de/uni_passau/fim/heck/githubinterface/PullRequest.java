@@ -62,8 +62,30 @@ public class PullRequest extends Reference {
     }
 
     /**
+     * Adds a {@link State#MERGED merged} PullRequest to the given repo {@code repo} without creating the corresponding
+     * remote.
+     *
+     * @param repo
+     *         the local Repository representation of the GitHub repository
+     * @param targetBranch
+     *         the target branch
+     * @param commits
+     *         A list of Commits included in this PullRequest
+     * @param issue
+     *         the corresponding pull request in GitHub
+     */
+    PullRequest(GitHubRepository repo, Reference targetBranch, List<Commit> commits, PullRequestData issue) {
+        super(repo, issue.head.sha);
+        this.state = State.MERGED;
+        this.targetBranch = targetBranch;
+        this.commits = commits;
+        this.repo = repo;
+        this.issue = issue;
+    }
+
+    /**
      * Determines the commit which will be the second parent in a hypothetical merge, or return the actual merge partner
-     * for merged already carried out.
+     * if the merge was already carried out.
      *
      * @return optionally the other reference for the merge, or an empty Optional, if the operations failed
      */
