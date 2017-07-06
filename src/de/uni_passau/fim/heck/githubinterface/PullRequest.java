@@ -138,11 +138,6 @@ public class PullRequest extends Reference {
         return getMergeTarget().flatMap(this::getMergeBase);
     }
 
-    @Override
-    public String getId() {
-        return getTip().get().getId();
-    }
-
     /**
      * Gets the state of this pull request, either {@code closed} or {@code open}.
      *
