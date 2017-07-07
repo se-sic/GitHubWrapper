@@ -250,13 +250,27 @@ public class GitHubRepository extends Repository {
                 pullRequests = new ArrayList<>(data.stream().map(pr -> {
                     State state = State.getPRState(pr.state, pr.merged_at != null);
 
-                    // if the fork was deleted and the PR was rejected, we cannot get verify the commits, so the PR is dropped
-                    if (pr.head.repo == null && state == State.DECLINED) {
-                        LOG.warning(String.format("PR %s has no fork repo and was not merged, therefore it was dropped!", pr.number));
+                    // if the fork was deleted and the PR was rejected or is still open, we cannot get verify the
+                    // commits, so the PR is dropped
+                    if (pr.head.repo == null && (state == State.DECLINED || state == State.OPEN)) {
+                        LOG.warning(String.format("PR %d has no fork repo and was not merged, therefore it was dropped!", pr.number));
                         return null;
                     }
 
-                    Reference target = repo.getBranch(pr.base.ref).orElse(null);
+                    // if the source branch on the fork was deleted and the PR was declined we also cannot get verify
+                    // the commits, so the PR is dropped as well
+                    if (pr.head.repo != null && !getBranch(pr.head.repo.full_name + "/" + pr.head.ref).isPresent()) {
+                        LOG.warning(String.format("The source branch of PR %d was deleted and the PR was not merged, therefore it was dropped!", pr.number));
+                        return null;
+                    }
+
+                    // we still can't find the tip, this probably means
+                    if (!repo.getCommit(pr.head.sha).isPresent()) {
+                        LOG.warning(String.format("The history of the repo does not include the merged PR %d", pr.number));
+                        return null;
+                    }
+
+                    Reference target = repo.getBranch("origin/" + pr.base.ref).orElse(null);
 
                     Optional<String> commitData = getJSONStringFromPath("/pulls/" + pr.number + "/commits");
                     //noinspection unchecked
@@ -273,7 +287,7 @@ public class GitHubRepository extends Repository {
                         });
 
                     if (pr.head.repo == null) {
-                        LOG.warning(String.format("PR %s has no fork repo", pr.number));
+                        LOG.warning(String.format("PR %d has no fork repo", pr.number));
                         return new PullRequest(this, target, commits, pr);
                     }
                     return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, pr.head.repo.html_url,
