@@ -81,8 +81,8 @@ public enum State {
     public static boolean includes(State state, State filter) {
         return filter == ANY ||
               (filter == State.CLOSED &&
-                      (state == State.MERGED ||
-                       state == State.DECLINED)) ||
+                        (state == State.MERGED ||
+                         state == State.DECLINED)) ||
                filter == state;
     }
 }

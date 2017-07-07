@@ -196,7 +196,7 @@ public class PullRequest extends Reference {
                 do {
                     c = next.poll();
                 } while (c != null && c.equals(base));
-            } while(c != null);
+            } while (c != null);
             return commits;
         }));
     }

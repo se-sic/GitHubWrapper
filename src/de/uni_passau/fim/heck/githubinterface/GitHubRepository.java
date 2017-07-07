@@ -28,10 +28,10 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommitData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.RefData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.State;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.UserData;
 import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
@@ -54,7 +54,7 @@ public class GitHubRepository extends Repository {
     private static final Logger LOG = Logger.getLogger(GitHubRepository.class.getCanonicalName());
 
     private final Repository repo;
-    private Gson gson;
+    private final Gson gson;
 
     private final String apiBaseURL;
     private final String oauthToken;
@@ -238,64 +238,66 @@ public class GitHubRepository extends Repository {
      * Gets the list of pull requests from GitHub, if it is not already cached.
      */
     private void getPullRequests() {
-        if (pullRequests == null) {
-            getJSONStringFromPath("/pulls?state=all").ifPresent(json -> {
-                ArrayList<PullRequestData> data;
-                try {
-                    data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() { }.getType());
-                } catch (JsonSyntaxException e) {
-                    LOG.warning("Encountered invalid JSON: " + json);
-                    return;
-                }
-                pullRequests = new ArrayList<>(data.stream().map(pr -> {
-                    State state = State.getPRState(pr.state, pr.merged_at != null);
-
-                    // if the fork was deleted and the PR was rejected or is still open, we cannot get verify the
-                    // commits, so the PR is dropped
-                    if (pr.head.repo == null && (state == State.DECLINED || state == State.OPEN)) {
-                        LOG.warning(String.format("PR %d has no fork repo and was not merged, therefore it was dropped!", pr.number));
-                        return null;
-                    }
-
-                    // if the source branch on the fork was deleted and the PR was declined we also cannot get verify
-                    // the commits, so the PR is dropped as well
-                    if (pr.head.repo != null && !getBranch(pr.head.repo.full_name + "/" + pr.head.ref).isPresent()) {
-                        LOG.warning(String.format("The source branch of PR %d was deleted and the PR was not merged, therefore it was dropped!", pr.number));
-                        return null;
-                    }
-
-                    // we still can't find the tip, this probably means
-                    if (!repo.getCommit(pr.head.sha).isPresent()) {
-                        LOG.warning(String.format("The history of the repo does not include the merged PR %d", pr.number));
-                        return null;
-                    }
-
-                    Reference target = repo.getBranch("origin/" + pr.base.ref).orElse(null);
-
-                    Optional<String> commitData = getJSONStringFromPath("/pulls/" + pr.number + "/commits");
-                    //noinspection unchecked
-                    List<Commit> commits = commitData.map(cd ->
-                            ((ArrayList<CommitData>) gson.fromJson(cd, new TypeToken<ArrayList<CommitData>>() { }.getType())).stream().map(c ->
-                                    getCommit(c.sha).orElseGet(() -> {
-                                        LOG.warning(String.format("Invalid commit %s from PR %d", c.sha, pr.number));
-                                        return null;
-                                    }))
-                                .filter(Objects::nonNull).collect(Collectors.toList()))
-                        .orElseGet(() -> {
-                            LOG.warning(String.format("Could not get commits for PR %d", pr.number));
-                            return Collections.emptyList();
-                        });
-
-                    if (pr.head.repo == null) {
-                        LOG.warning(String.format("PR %d has no fork repo", pr.number));
-                        return new PullRequest(this, target, commits, pr);
-                    }
-                    return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, pr.head.repo.html_url,
-                            state, target, commits, pr);
-
-                }).filter(Objects::nonNull).collect(Collectors.toList()));
-            });
+        if (pullRequests != null) {
+            return;
         }
+        getJSONStringFromPath("/pulls?state=all").ifPresent(json -> {
+            ArrayList<PullRequestData> data;
+            try {
+                data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() { }.getType());
+            } catch (JsonSyntaxException e) {
+                LOG.warning("Encountered invalid JSON: " + json);
+                return;
+            }
+            pullRequests = new ArrayList<>(data.stream().map(pr -> {
+                State state = State.getPRState(pr.state, pr.merged_at != null);
+
+                // if the fork was deleted and the PR was rejected or is still open, we cannot get verify the
+                // commits, so the PR is dropped
+                if (pr.head.repo == null && (state == State.DECLINED || state == State.OPEN)) {
+                    LOG.warning(String.format("PR %d has no fork repo and was not merged, therefore it was dropped!", pr.number));
+                    return null;
+                }
+
+                // if the source branch on the fork was deleted and the PR was declined we also cannot get verify
+                // the commits, so the PR is dropped as well
+                if (pr.head.repo != null && !getBranch(pr.head.repo.full_name + "/" + pr.head.ref).isPresent()) {
+                    LOG.warning(String.format("The source branch of PR %d was deleted and the PR was not merged, therefore it was dropped!", pr.number));
+                    return null;
+                }
+
+                // we still can't find the tip, this probably means the history was rewritten and the refs are invalid
+                // nothing we can do but drop the PR
+                if (!repo.getCommit(pr.head.sha).isPresent()) {
+                    LOG.warning(String.format("The history of the repo does not include the merged PR %d, therefore it was dropped!", pr.number));
+                    return null;
+                }
+
+                Reference target = repo.getBranch("origin/" + pr.base.ref).orElse(null);
+
+                Optional<String> commitData = getJSONStringFromPath("/pulls/" + pr.number + "/commits");
+                //noinspection unchecked
+                List<Commit> commits = commitData.map(cd ->
+                        ((ArrayList<RefData>) gson.fromJson(cd, new TypeToken<ArrayList<RefData>>() {}.getType())).stream().map(c ->
+                                getCommit(c.sha).orElseGet(() -> {
+                                    LOG.warning(String.format("Invalid commit %s from PR %d", c.sha, pr.number));
+                                    return null;
+                                }))
+                            .filter(Objects::nonNull).collect(Collectors.toList()))
+                    .orElseGet(() -> {
+                        LOG.warning(String.format("Could not get commits for PR %d", pr.number));
+                        return Collections.emptyList();
+                    });
+
+                if (pr.head.repo == null) {
+                    LOG.warning(String.format("PR %d has no fork repo", pr.number));
+                    return new PullRequest(this, target, commits, pr);
+                }
+                return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, pr.head.repo.html_url,
+                        state, target, commits, pr);
+
+            }).filter(Objects::nonNull).collect(Collectors.toList()));
+        });
     }
 
     /**
@@ -328,8 +330,7 @@ public class GitHubRepository extends Repository {
                 return new ArrayList<>();
             }
 
-            return Arrays.stream(res.getStdOutTrimmed().split("\\s+")).map(this::getCommitUnchecked)
-                    .collect(Collectors.toList());
+            return Arrays.stream(res.getStdOutTrimmed().split("\\s+")).map(this::getCommitUnchecked).collect(Collectors.toList());
         };
 
         return commitList.map(toCommitList);
@@ -379,9 +380,9 @@ public class GitHubRepository extends Repository {
                 }
 
                 Optional<String> next = Arrays.stream(headers.getOrDefault("Link",
-                        new ArrayList<>(Collections.singleton(""))
-                    ).get(0).split(","))
-                        .filter(link -> link.contains("next")).findFirst();
+                            new ArrayList<>(Collections.singleton(""))
+                        ).get(0).split(","))
+                    .filter(link -> link.contains("next")).findFirst();
                 dataStreams.add(url.openStream());
 
                 if (!next.isPresent()) break;
@@ -394,7 +395,7 @@ public class GitHubRepository extends Repository {
                 json = buffer.lines().collect(Collectors.joining("\n")).replace("][", ",");
             }
         } catch (IOException e) {
-            LOG.warning("Could not get data from Github.");
+            LOG.warning("Could not get data from GitHub.");
             return Optional.empty();
         }
         return Optional.of(json);
@@ -406,7 +407,7 @@ public class GitHubRepository extends Repository {
      * @return {@code true} if successful
      */
     public boolean cleanup() {
-        Optional<ProcessExecutor.ExecRes> result = git.exec(dir,"clean", "-d", "-x", "-f");
+        Optional<ProcessExecutor.ExecRes> result = git.exec(dir, "clean", "-d", "-x", "-f");
         Function<ProcessExecutor.ExecRes, Boolean> toBoolean = res -> {
             if (git.failed(res)) {
                 LOG.warning("Failed to clean directory");
