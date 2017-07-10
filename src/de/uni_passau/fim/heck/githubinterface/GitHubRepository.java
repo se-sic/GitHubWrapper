@@ -95,6 +95,7 @@ public class GitHubRepository extends Repository {
             repoUrl = repoUrl.replace(":", "/").replace("git@", "https://");
         }
         apiBaseURL = repoUrl.replace(".git", "").replace("//github.com/", "//api.github.com/repos/");
+        LOG.fine(String.format("Creating repo for %s", apiBaseURL));
         this.git = git;
         dir = repo.getDir();
         this.oauthToken = oauthToken;
@@ -117,7 +118,10 @@ public class GitHubRepository extends Repository {
      */
     public Optional<List<PullRequest>> getPullRequests(State filter) {
         getPullRequests();
-        if (pullRequests == null) return Optional.empty();
+        if (pullRequests == null) {
+            LOG.warning("Could not get PRs.");
+            return Optional.empty();
+        }
         return Optional.of(pullRequests.stream().filter(pr -> State.includes(pr.getState(), filter)).collect(Collectors.toList()));
     }
 
@@ -239,8 +243,10 @@ public class GitHubRepository extends Repository {
      */
     private void getPullRequests() {
         if (pullRequests != null) {
+            LOG.fine("Using cached list of PRs");
             return;
         }
+        LOG.fine("Building new list of PRs");
         getJSONStringFromPath("/pulls?state=all").ifPresent(json -> {
             ArrayList<PullRequestData> data;
             try {
@@ -314,6 +320,7 @@ public class GitHubRepository extends Repository {
      * @return optionally a List of Commits or an empty optional if the operation failed
      */
     private Optional<List<Commit>> getCommitsInRange(Date start, Date end, String branch, boolean onlyMerges) {
+        LOG.fine(String.format("Getting %s between %Tc and %Tc on %s", onlyMerges ? "merges" : "commits", start, end, branch));
         DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm");
         ArrayList<String> params = new ArrayList<>(Arrays.asList("--format=tformat:%H", "--branches=" + branch));
         if (end != null) params.add("--until=" + df.format(end));
@@ -359,6 +366,7 @@ public class GitHubRepository extends Repository {
     Optional<String> getJSONStringFromURL(String urlString) {
         URL url;
         String json;
+        LOG.fine(String.format("Getting json from %s", urlString));
         try {
             String sep = "?";
             if (urlString.contains("?")) sep = "&";
