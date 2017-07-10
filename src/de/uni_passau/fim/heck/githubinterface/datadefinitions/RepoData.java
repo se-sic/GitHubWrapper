@@ -14,4 +14,9 @@ public class RepoData {
      * The HTML URL to the web page on GitHub.
      */
     public String html_url;
+
+    /**
+     * The url to clone the repo.
+     */
+    public String clone_url;
 }

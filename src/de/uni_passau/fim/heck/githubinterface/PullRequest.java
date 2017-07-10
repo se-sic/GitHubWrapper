@@ -40,8 +40,6 @@ public class PullRequest extends Reference {
      *         the branch name
      * @param remoteName
      *         the identifier (&lt;user&gt;/&lt;repo&gt;)
-     * @param forkURL
-     *         the url of the forked repo
      * @param state
      *         the sate of the pull request
      * @param targetBranch
@@ -51,12 +49,11 @@ public class PullRequest extends Reference {
      * @param issue
      *         the corresponding pull request in GitHub
      */
-    PullRequest(GitHubRepository repo, String id, String remoteName, String forkURL, State state, Reference targetBranch, List<Commit> commits, PullRequestData issue) {
+    PullRequest(GitHubRepository repo, String id, String remoteName, State state, Reference targetBranch, List<Commit> commits, PullRequestData issue) {
         super(repo, remoteName + "/" + id);
         this.state = state;
         this.targetBranch = targetBranch;
         this.commits = commits;
-        repo.addRemote(remoteName, forkURL);
         this.repo = repo;
         this.issue = issue;
     }

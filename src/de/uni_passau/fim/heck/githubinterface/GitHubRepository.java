@@ -267,7 +267,9 @@ public class GitHubRepository extends Repository {
 
                 // if the source branch on the fork was deleted and the PR was declined we also cannot get verify
                 // the commits, so the PR is dropped as well
-                if (pr.head.repo != null && !getBranch(pr.head.repo.full_name + "/" + pr.head.ref).isPresent()) {
+                if (pr.head.repo != null &&
+                        !addRemote(pr.head.repo.full_name, pr.head.repo.clone_url) &&
+                        !getBranch(pr.head.repo.full_name + "/" + pr.head.ref).isPresent()) {
                     LOG.warning(String.format("The source branch of PR %d was deleted and the PR was not merged, therefore it was dropped!", pr.number));
                     return null;
                 }
@@ -299,8 +301,7 @@ public class GitHubRepository extends Repository {
                     LOG.warning(String.format("PR %d has no fork repo", pr.number));
                     return new PullRequest(this, target, commits, pr);
                 }
-                return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, pr.head.repo.html_url,
-                        state, target, commits, pr);
+                return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, state, target, commits, pr);
 
             }).filter(Objects::nonNull).collect(Collectors.toList()));
         });
