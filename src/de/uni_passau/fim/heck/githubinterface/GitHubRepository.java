@@ -3,11 +3,7 @@ package de.uni_passau.fim.heck.githubinterface;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.SequenceInputStream;
-import java.net.URL;
-import java.net.URLConnection;
 import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -44,6 +40,11 @@ import de.uni_passau.fim.seibt.gitwrapper.repo.Reference;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Repository;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Status;
 import io.gsonfire.GsonFireBuilder;
+import org.apache.http.Header;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.HttpClients;
 
 /**
  * A GitHubRepository wraps a (local) Repository to give access to the GitHub API to provide {@link PullRequestData} and
@@ -55,6 +56,7 @@ public class GitHubRepository extends Repository {
 
     private final Repository repo;
     private final Gson gson;
+    private final HttpClient hc;
 
     private final String apiBaseURL;
     private final String oauthToken;
@@ -107,6 +109,8 @@ public class GitHubRepository extends Repository {
         gb.registerTypeAdapter(UserData.class, new UserDataDeserializer(this));
         gb.registerTypeAdapter(EventData.class, new EventDataDeserializer());
         gson = gb.create();
+
+        hc = HttpClients.createDefault();
     }
 
     /**
@@ -250,7 +254,7 @@ public class GitHubRepository extends Repository {
         getJSONStringFromPath("/pulls?state=all").ifPresent(json -> {
             ArrayList<PullRequestData> data;
             try {
-                data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() { }.getType());
+                data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() {}.getType());
             } catch (JsonSyntaxException e) {
                 LOG.warning("Encountered invalid JSON: " + json);
                 return;
@@ -365,7 +369,7 @@ public class GitHubRepository extends Repository {
      * @return an InputStreamReader on the result
      */
     Optional<String> getJSONStringFromURL(String urlString) {
-        URL url;
+        String url;
         String json;
         LOG.fine(String.format("Getting json from %s", urlString));
         try {
@@ -373,12 +377,16 @@ public class GitHubRepository extends Repository {
             if (urlString.contains("?")) sep = "&";
             String count = "&per_page=100";
 
-            List<InputStream> dataStreams = new ArrayList<>();
-            url = new URL(urlString + sep + "access_token=" + oauthToken + count);
+            List<String> data = new ArrayList<>();
+            url = urlString + sep + "access_token=" + oauthToken + count;
 
             do {
-                URLConnection conn = url.openConnection();
-                Map<String, List<String>> headers = conn.getHeaderFields();
+                HttpResponse resp = hc.execute(new HttpGet(url));
+
+                Map<String, List<String>> headers = Arrays.stream(resp.getAllHeaders())
+                        .collect(Collectors.toMap(Header::getName,
+                                h -> new ArrayList<>(Collections.singletonList(h.getValue())),
+                                (a, b) -> {a.addAll(b); return a;}));
 
                 boolean noAPICallsRemaining = headers.getOrDefault("X-RateLimit-Remaining",
                         new ArrayList<>(Collections.singleton("0"))).stream().anyMatch(x -> x.equals("0"));
@@ -392,22 +400,23 @@ public class GitHubRepository extends Repository {
                             new ArrayList<>(Collections.singleton(""))
                         ).get(0).split(","))
                     .filter(link -> link.contains("next")).findFirst();
-                dataStreams.add(url.openStream());
+                try (BufferedReader buffer = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()))) {
+                    data.add(buffer.lines().collect(Collectors.joining("\n")));
+                }
 
                 if (!next.isPresent()) break;
                 String nextUrl = next.get();
-                url = new URL(nextUrl.substring(nextUrl.indexOf("<") + 1, nextUrl.indexOf(">")));
+                url = nextUrl.substring(nextUrl.indexOf("<") + 1, nextUrl.indexOf(">"));
             } while (true);
 
-            // concatenate all results together, making one large JSON list
-            try (BufferedReader buffer = new BufferedReader(new InputStreamReader(new SequenceInputStream(Collections.enumeration(dataStreams))))) {
-                json = buffer.lines().collect(Collectors.joining("\n")).replace("][", ",");
-            }
+            // concatenate all results together, making one large JSON string
+           json = String.join("", data).replace("][", ",");
+
         } catch (IOException e) {
             LOG.warning("Could not get data from GitHub.");
             return Optional.empty();
         }
-        return Optional.of(json);
+        return json == null || json.isEmpty() ? Optional.empty() : Optional.of(json);
     }
 
     /**
