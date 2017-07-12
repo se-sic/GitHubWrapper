@@ -69,7 +69,7 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
                 .map(eventData -> ((EventData.ReferencedEventData) eventData).commit_id);
 
         return Stream.concat(Stream.concat(commentCommits, referencedCommits), extractSHA1s(issue.body).stream())
-                .map(hash-> {
+                .map(hash -> {
                     // Disable logging for this method call, so false positives don't reported
                     Logger log = Logger.getLogger(LocalRepository.class.getCanonicalName());
                     Level level = log.getLevel();

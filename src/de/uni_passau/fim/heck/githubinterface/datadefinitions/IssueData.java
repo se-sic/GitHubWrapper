@@ -53,6 +53,11 @@ public class IssueData {
     public boolean isPullRequest;
 
     /**
+     * the text title.
+     */
+    public String title;
+
+    /**
      * The text body.
      */
     public String body;

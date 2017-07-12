@@ -3,11 +3,7 @@ package de.uni_passau.fim.heck.githubinterface;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.SequenceInputStream;
-import java.net.URL;
-import java.net.URLConnection;
 import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -17,6 +13,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.logging.Logger;
@@ -30,6 +27,7 @@ import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.RefData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.State;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.UserData;
 import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
@@ -42,6 +40,11 @@ import de.uni_passau.fim.seibt.gitwrapper.repo.Reference;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Repository;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Status;
 import io.gsonfire.GsonFireBuilder;
+import org.apache.http.Header;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.HttpClients;
 
 /**
  * A GitHubRepository wraps a (local) Repository to give access to the GitHub API to provide {@link PullRequestData} and
@@ -52,7 +55,8 @@ public class GitHubRepository extends Repository {
     private static final Logger LOG = Logger.getLogger(GitHubRepository.class.getCanonicalName());
 
     private final Repository repo;
-    private Gson gson;
+    private final Gson gson;
+    private final HttpClient hc;
 
     private final String apiBaseURL;
     private final String oauthToken;
@@ -93,6 +97,7 @@ public class GitHubRepository extends Repository {
             repoUrl = repoUrl.replace(":", "/").replace("git@", "https://");
         }
         apiBaseURL = repoUrl.replace(".git", "").replace("//github.com/", "//api.github.com/repos/");
+        LOG.fine(String.format("Creating repo for %s", apiBaseURL));
         this.git = git;
         dir = repo.getDir();
         this.oauthToken = oauthToken;
@@ -104,6 +109,8 @@ public class GitHubRepository extends Repository {
         gb.registerTypeAdapter(UserData.class, new UserDataDeserializer(this));
         gb.registerTypeAdapter(EventData.class, new EventDataDeserializer());
         gson = gb.create();
+
+        hc = HttpClients.createDefault();
     }
 
     /**
@@ -115,7 +122,10 @@ public class GitHubRepository extends Repository {
      */
     public Optional<List<PullRequest>> getPullRequests(State filter) {
         getPullRequests();
-        if (pullRequests == null) return Optional.empty();
+        if (pullRequests == null) {
+            LOG.warning("Could not get PRs.");
+            return Optional.empty();
+        }
         return Optional.of(pullRequests.stream().filter(pr -> State.includes(pr.getState(), filter)).collect(Collectors.toList()));
     }
 
@@ -236,21 +246,69 @@ public class GitHubRepository extends Repository {
      * Gets the list of pull requests from GitHub, if it is not already cached.
      */
     private void getPullRequests() {
-        if (pullRequests == null) {
-            getJSONStringFromPath("/pulls?state=all").ifPresent(json -> {
-                ArrayList<PullRequestData> data;
-                try {
-                    data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() { }.getType());
-                } catch (JsonSyntaxException e) {
-                    LOG.warning("Encountered invalid JSON: " + json);
-                    return;
-                }
-                pullRequests = new ArrayList<>(data.stream().map(pr ->
-                        new PullRequest(this, pr.head.ref, pr.head.repo.full_name, pr.head.repo.html_url,
-                                State.getPRState(pr.state, pr.merged_at != null), repo.getBranch(pr.base.ref).orElse(null), pr)
-                ).collect(Collectors.toList()));
-            });
+        if (pullRequests != null) {
+            LOG.fine("Using cached list of PRs");
+            return;
         }
+        LOG.fine("Building new list of PRs");
+        getJSONStringFromPath("/pulls?state=all").ifPresent(json -> {
+            ArrayList<PullRequestData> data;
+            try {
+                data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() {}.getType());
+            } catch (JsonSyntaxException e) {
+                LOG.warning("Encountered invalid JSON: " + json);
+                return;
+            }
+            pullRequests = new ArrayList<>(data.stream().map(pr -> {
+                State state = State.getPRState(pr.state, pr.merged_at != null);
+
+                // if the fork was deleted and the PR was rejected or is still open, we cannot get verify the
+                // commits, so the PR is dropped
+                if (pr.head.repo == null && (state == State.DECLINED || state == State.OPEN)) {
+                    LOG.warning(String.format("PR %d has no fork repo and was not merged, therefore it was dropped!", pr.number));
+                    return null;
+                }
+
+                // if the source branch on the fork was deleted and the PR was declined we also cannot get verify
+                // the commits, so the PR is dropped as well
+                if (pr.head.repo != null &&
+                        !addRemote(pr.head.repo.full_name, pr.head.repo.clone_url) &&
+                        !getBranch(pr.head.repo.full_name + "/" + pr.head.ref).isPresent()) {
+                    LOG.warning(String.format("The source branch of PR %d was deleted and the PR was not merged, therefore it was dropped!", pr.number));
+                    return null;
+                }
+
+                // we still can't find the tip, this probably means the history was rewritten and the refs are invalid
+                // nothing we can do but drop the PR
+                if (!repo.getCommit(pr.head.sha).isPresent()) {
+                    LOG.warning(String.format("The history of the repo does not include the merged PR %d, therefore it was dropped!", pr.number));
+                    return null;
+                }
+
+                Reference target = repo.getBranch("origin/" + pr.base.ref).orElse(null);
+
+                Optional<String> commitData = getJSONStringFromPath("/pulls/" + pr.number + "/commits");
+                //noinspection unchecked
+                List<Commit> commits = commitData.map(cd ->
+                        ((ArrayList<RefData>) gson.fromJson(cd, new TypeToken<ArrayList<RefData>>() {}.getType())).stream().map(c ->
+                                getCommit(c.sha).orElseGet(() -> {
+                                    LOG.warning(String.format("Invalid commit %s from PR %d", c.sha, pr.number));
+                                    return null;
+                                }))
+                            .filter(Objects::nonNull).collect(Collectors.toList()))
+                    .orElseGet(() -> {
+                        LOG.warning(String.format("Could not get commits for PR %d", pr.number));
+                        return Collections.emptyList();
+                    });
+
+                if (pr.head.repo == null) {
+                    LOG.warning(String.format("PR %d has no fork repo", pr.number));
+                    return new PullRequest(this, target, commits, pr);
+                }
+                return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, state, target, commits, pr);
+
+            }).filter(Objects::nonNull).collect(Collectors.toList()));
+        });
     }
 
     /**
@@ -267,6 +325,7 @@ public class GitHubRepository extends Repository {
      * @return optionally a List of Commits or an empty optional if the operation failed
      */
     private Optional<List<Commit>> getCommitsInRange(Date start, Date end, String branch, boolean onlyMerges) {
+        LOG.fine(String.format("Getting %s between %Tc and %Tc on %s", onlyMerges ? "merges" : "commits", start, end, branch));
         DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm");
         ArrayList<String> params = new ArrayList<>(Arrays.asList("--format=tformat:%H", "--branches=" + branch));
         if (end != null) params.add("--until=" + df.format(end));
@@ -283,8 +342,7 @@ public class GitHubRepository extends Repository {
                 return new ArrayList<>();
             }
 
-            return Arrays.stream(res.getStdOutTrimmed().split("\\s+")).map(this::getCommitUnchecked)
-                    .collect(Collectors.toList());
+            return Arrays.stream(res.getStdOutTrimmed().split("\\s+")).map(this::getCommitUnchecked).collect(Collectors.toList());
         };
 
         return commitList.map(toCommitList);
@@ -310,20 +368,25 @@ public class GitHubRepository extends Repository {
      *         the URL to call
      * @return an InputStreamReader on the result
      */
-    public Optional<String> getJSONStringFromURL(String urlString) {
-        URL url;
+    Optional<String> getJSONStringFromURL(String urlString) {
+        String url;
         String json;
+        LOG.fine(String.format("Getting json from %s", urlString));
         try {
             String sep = "?";
             if (urlString.contains("?")) sep = "&";
             String count = "&per_page=100";
 
-            List<InputStream> dataStreams = new ArrayList<>();
-            url = new URL(urlString + sep + "access_token=" + oauthToken + count);
+            List<String> data = new ArrayList<>();
+            url = urlString + sep + "access_token=" + oauthToken + count;
 
             do {
-                URLConnection conn = url.openConnection();
-                Map<String, List<String>> headers = conn.getHeaderFields();
+                HttpResponse resp = hc.execute(new HttpGet(url));
+
+                Map<String, List<String>> headers = Arrays.stream(resp.getAllHeaders())
+                        .collect(Collectors.toMap(Header::getName,
+                                h -> new ArrayList<>(Collections.singletonList(h.getValue())),
+                                (a, b) -> {a.addAll(b); return a;}));
 
                 boolean noAPICallsRemaining = headers.getOrDefault("X-RateLimit-Remaining",
                         new ArrayList<>(Collections.singleton("0"))).stream().anyMatch(x -> x.equals("0"));
@@ -334,25 +397,26 @@ public class GitHubRepository extends Repository {
                 }
 
                 Optional<String> next = Arrays.stream(headers.getOrDefault("Link",
-                        new ArrayList<>(Collections.singleton(""))
-                    ).get(0).split(","))
-                        .filter(link -> link.contains("next")).findFirst();
-                dataStreams.add(url.openStream());
+                            new ArrayList<>(Collections.singleton(""))
+                        ).get(0).split(","))
+                    .filter(link -> link.contains("next")).findFirst();
+                try (BufferedReader buffer = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()))) {
+                    data.add(buffer.lines().collect(Collectors.joining("\n")));
+                }
 
                 if (!next.isPresent()) break;
                 String nextUrl = next.get();
-                url = new URL(nextUrl.substring(nextUrl.indexOf("<") + 1, nextUrl.indexOf(">")));
+                url = nextUrl.substring(nextUrl.indexOf("<") + 1, nextUrl.indexOf(">"));
             } while (true);
 
-            // concatenate all results together, making one large JSON list
-            try (BufferedReader buffer = new BufferedReader(new InputStreamReader(new SequenceInputStream(Collections.enumeration(dataStreams))))) {
-                json = buffer.lines().collect(Collectors.joining("\n")).replace("][", ",");
-            }
+            // concatenate all results together, making one large JSON string
+           json = String.join("", data).replace("][", ",");
+
         } catch (IOException e) {
-            LOG.warning("Could not get data from Github.");
+            LOG.warning("Could not get data from GitHub.");
             return Optional.empty();
         }
-        return Optional.of(json);
+        return json == null || json.isEmpty() ? Optional.empty() : Optional.of(json);
     }
 
     /**
@@ -361,7 +425,7 @@ public class GitHubRepository extends Repository {
      * @return {@code true} if successful
      */
     public boolean cleanup() {
-        Optional<ProcessExecutor.ExecRes> result = git.exec(dir,"clean", "-d", "-x", "-f");
+        Optional<ProcessExecutor.ExecRes> result = git.exec(dir, "clean", "-d", "-x", "-f");
         Function<ProcessExecutor.ExecRes, Boolean> toBoolean = res -> {
             if (git.failed(res)) {
                 LOG.warning("Failed to clean directory");

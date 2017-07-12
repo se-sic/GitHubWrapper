@@ -24,7 +24,7 @@ public class EventDataDeserializer implements JsonDeserializer<EventData>, JsonS
         map.put("labeled", EventData.LabeledEventData.class);
         map.put("referenced", EventData.ReferencedEventData.class);
         map.put("merged", EventData.ReferencedEventData.class);
-        map.put("closed", EventData.ReferencedEventData.class);
+        map.put("closed", EventData.DefaultEventData.class);
     }
 
     @Override
