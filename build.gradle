@@ -26,8 +26,8 @@ dependencies {
     //null annotation
     compile group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.1'
 
-    // better http
-    compile group: 'org.apache.commons', name: 'httpclient', version: '4.5.3'
+    // better http client
+    compile group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.5.3'
 
     //json
     compile 'com.google.code.gson:gson:2.7'
