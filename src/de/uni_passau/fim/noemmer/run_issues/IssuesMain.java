@@ -56,6 +56,7 @@ public class IssuesMain {
         repo.getIssues(true).ifPresent(issueData -> issueData.forEach(issue -> {
             JsonObject issueJson = parser.parse(repo.serialize(issue)).getAsJsonObject();
             insertUserIds(issueJson);
+            removeExcess(issueJson);
             issues.add(issueJson);
         }));
 
@@ -69,6 +70,30 @@ public class IssuesMain {
         }
     }
 
+    private static void removeExcess(JsonObject issueJson) {
+        Set<Map.Entry<String, JsonElement>> entries = issueJson.entrySet();
+        for (Map.Entry<String, JsonElement> entry : entries) {
+            if(entry.getKey().equals("url") || entry.getKey().equals("body")) {
+                issueJson.remove(entry.getKey());
+            } else if((entry.getKey().equals("user") && entry.getValue() instanceof JsonObject)) {
+                entry.setValue(((JsonObject) entry.getValue()).get("userid"));
+            } else if(entry.getKey().equals("relatedCommits")) {
+                ((JsonArray) entry.getValue()).forEach(commit -> {
+                    ((JsonObject) commit).remove("time");
+                    ((JsonObject) commit).remove("author");
+                });
+            } else if(entry.getValue() instanceof JsonArray) {
+                ((JsonArray) entry.getValue()).forEach(j -> {
+                    if(j instanceof JsonObject) {
+                        removeExcess((JsonObject) j);
+                    }
+                });
+            } else if(entry.getValue() instanceof JsonObject) {
+                removeExcess((JsonObject)entry.getValue());
+            }
+        }
+    }
+
     private static void insertUserIds(JsonObject issueJson) {
         Set<Map.Entry<String, JsonElement>> entries = issueJson.entrySet();
         for (Map.Entry<String, JsonElement> entry : entries) {
@@ -79,10 +104,7 @@ public class IssuesMain {
                     }
                 });
             }
-            if (entry.getValue() instanceof JsonObject && !entry.getKey().equals("user")) {
-                System.out.println("Were in recursive");
-                insertUserIds((JsonObject) entry.getValue());
-            } else if (entry.getKey().equals("user") && entry.getValue() instanceof JsonObject) {
+            if (entry.getKey().equals("user") && entry.getValue() instanceof JsonObject) {
                 JsonObject user = (JsonObject) entry.getValue();
                 JsonPrimitive userId;
                 System.out.println(user.toString());

@@ -56,8 +56,7 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
     /**
      * Parses Commits from issue body, comment bodies and referenced events.
      *
-     * @param issue
-     *         the IssueData
+     * @param issue the IssueData
      * @return a List of all referenced Commits
      */
     private List<Commit> parseCommits(IssueData issue) {
