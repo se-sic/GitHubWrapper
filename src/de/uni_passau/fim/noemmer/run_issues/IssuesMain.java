@@ -71,35 +71,47 @@ public class IssuesMain {
     }
 
     private static void removeExcess(JsonObject issueJson) {
-        Set<Map.Entry<String, JsonElement>> entries = issueJson.entrySet();
-        for (Map.Entry<String, JsonElement> entry : entries) {
-            if(entry.getKey().equals("url") || entry.getKey().equals("body")) {
-                issueJson.remove(entry.getKey());
-            } else if((entry.getKey().equals("user") && entry.getValue() instanceof JsonObject)) {
-                entry.setValue(((JsonObject) entry.getValue()).get("userid"));
-            } else if(entry.getKey().equals("relatedCommits")) {
-                ((JsonArray) entry.getValue()).forEach(commit -> {
-                    ((JsonObject) commit).remove("time");
-                    ((JsonObject) commit).remove("author");
-                });
-            } else if(entry.getValue() instanceof JsonArray) {
-                ((JsonArray) entry.getValue()).forEach(j -> {
-                    if(j instanceof JsonObject) {
-                        removeExcess((JsonObject) j);
-                    }
-                });
-            } else if(entry.getValue() instanceof JsonObject) {
-                removeExcess((JsonObject)entry.getValue());
-            }
+        if (issueJson.has("url"))
+            issueJson.remove("url");
+
+        if (issueJson.has("body"))
+            issueJson.remove("body");
+
+        if (issueJson.has("title"))
+            issueJson.remove("title");
+
+        if (issueJson.has("user") && issueJson.get("user") instanceof JsonObject) {
+            JsonElement buffer = ((JsonObject) issueJson.get("user")).get("userId");
+            issueJson.add("user", buffer);
+        }
+        if (issueJson.has("relatedCommits") && issueJson.get("relatedCommits") instanceof JsonArray) {
+            ((JsonArray) issueJson.get("relatedCommits")).forEach(commit -> {
+                ((JsonObject) commit).remove("time");
+                ((JsonObject) commit).remove("author");
+            });
+        }
+        if (issueJson.has("commentsList") && issueJson.get("commentsList") instanceof JsonArray) {
+            ((JsonArray) issueJson.get("commentsList")).forEach(j -> {
+                if (j instanceof JsonObject) {
+                    removeExcess((JsonObject) j);
+                }
+            });
+        }
+        if (issueJson.has("eventsList") && issueJson.get("eventsList") instanceof JsonArray) {
+            ((JsonArray) issueJson.get("eventsList")).forEach(j -> {
+                if (j instanceof JsonObject) {
+                    removeExcess((JsonObject) j);
+                }
+            });
         }
     }
 
     private static void insertUserIds(JsonObject issueJson) {
         Set<Map.Entry<String, JsonElement>> entries = issueJson.entrySet();
         for (Map.Entry<String, JsonElement> entry : entries) {
-            if(entry.getValue() instanceof JsonArray) {
+            if (entry.getValue() instanceof JsonArray) {
                 ((JsonArray) entry.getValue()).forEach(j -> {
-                    if(j instanceof JsonObject) {
+                    if (j instanceof JsonObject) {
                         insertUserIds((JsonObject) j);
                     }
                 });
@@ -135,7 +147,7 @@ public class IssuesMain {
                 builder.append(line);
             }
             rd.close();
-            if(builder.toString().contains("error")) {
+            if (builder.toString().contains("error")) {
                 response = getHttpResponse(name == null ? username : name, username + "@default.com", client, post);
                 rd = new BufferedReader(new InputStreamReader(response.getEntity().getContent()));
                 builder = new StringBuilder();
