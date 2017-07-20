@@ -18,7 +18,7 @@ import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 public class IssueData {
 
     /**
-     * The number of the issue (referenced with {@code #nr})
+     * The number of the issue (referenced with {@code #nr}).
      */
     public int number;
 
@@ -45,7 +45,7 @@ public class IssueData {
     public Date closed_at;
 
     /**
-     * {@code true} if it is a PullRequest
+     * {@code true} if it is a PullRequest.
      *
      * @see PullRequestData
      * @see PullRequest
@@ -53,10 +53,18 @@ public class IssueData {
     public boolean isPullRequest;
 
     /**
+     * the text title.
+     */
+    public String title;
+
+    /**
      * The text body.
      */
     public String body;
 
+    /**
+     * The HTML URL to this issue.
+     */
     @SerializedName(value = "url", alternate = {"html_url"})
     public String url;
 

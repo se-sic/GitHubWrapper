@@ -1,8 +1,11 @@
 package de.uni_passau.fim.heck.githubinterface;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -15,16 +18,23 @@ import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.State;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
+import de.uni_passau.fim.seibt.gitwrapper.repo.LocalRepository;
 import io.gsonfire.PostProcessor;
 
 /**
  * The IssueDataPostprocessor extracts additional information from issues and populated IssueData instances with other
- * git-related information
+ * git-related information.
  */
 public class IssueDataPostprocessor implements PostProcessor<IssueData> {
 
     private final GitHubRepository repo;
 
+    /**
+     * Creates a new IssueDataPostprocessor for handling Issues specific to the provided GitHubRepository.
+     *
+     * @param repo
+     *         the repository
+     */
     IssueDataPostprocessor(GitHubRepository repo) {
         this.repo = repo;
     }
@@ -58,9 +68,17 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
                 .filter(eventData -> eventData instanceof EventData.ReferencedEventData)
                 .map(eventData -> ((EventData.ReferencedEventData) eventData).commit_id);
 
-
         return Stream.concat(Stream.concat(commentCommits, referencedCommits), extractSHA1s(issue.body).stream())
-                .map(repo::getCommit)
+                .map(hash -> {
+                    // Disable logging for this method call, so false positives don't reported
+                    Logger log = Logger.getLogger(LocalRepository.class.getCanonicalName());
+                    Level level = log.getLevel();
+                    log.setLevel(Level.OFF);
+                    Optional<Commit> c = repo.getCommit(hash);
+                    log.setLevel(level);
+
+                    return c;
+                })
 
                 // filter out false positive matches on normal words (and other errors)
                 .filter(Optional::isPresent)
@@ -77,6 +95,9 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
      * @return a List of all valid hashes
      */
     private List<String> extractSHA1s(String text) {
+        if (text == null) {
+            return Collections.emptyList();
+        }
         Pattern sha1Pattern = Pattern.compile("([0-9a-f]{5,40})");
         Matcher matcher = sha1Pattern.matcher(text);
 
@@ -90,7 +111,5 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
     }
 
     @Override
-    public void postSerialize(JsonElement result, IssueData src, Gson gson) {
-
-    }
+    public void postSerialize(JsonElement result, IssueData src, Gson gson) { }
 }

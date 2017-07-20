@@ -8,12 +8,14 @@ import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParseException;
+import com.google.gson.JsonSerializationContext;
+import com.google.gson.JsonSerializer;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 
 /**
  * The EventDataDeserializer helps with mapping events to their specific subclasses.
  */
-public class EventDataDeserializer implements JsonDeserializer<EventData> {
+public class EventDataDeserializer implements JsonDeserializer<EventData>, JsonSerializer<EventData> {
 
     private static Map<String, Class> map = new TreeMap<>();
 
@@ -22,7 +24,7 @@ public class EventDataDeserializer implements JsonDeserializer<EventData> {
         map.put("labeled", EventData.LabeledEventData.class);
         map.put("referenced", EventData.ReferencedEventData.class);
         map.put("merged", EventData.ReferencedEventData.class);
-        map.put("closed", EventData.ReferencedEventData.class);
+        map.put("closed", EventData.DefaultEventData.class);
     }
 
     @Override
@@ -33,5 +35,10 @@ public class EventDataDeserializer implements JsonDeserializer<EventData> {
             c = map.get("");
         }
         return context.deserialize(json, c);
+    }
+
+    @Override
+    public JsonElement serialize(EventData src, Type typeOfSrc, JsonSerializationContext context) {
+        return context.serialize(src, src.getClass());
     }
 }

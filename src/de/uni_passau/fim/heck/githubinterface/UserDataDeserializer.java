@@ -11,6 +11,7 @@ import java.util.Optional;
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
@@ -22,7 +23,8 @@ import de.uni_passau.fim.heck.githubinterface.datadefinitions.UserData;
  */
 public class UserDataDeserializer implements JsonDeserializer<UserData> {
 
-    private static Map<String, UserData> users = new HashMap<>();
+    private static Map<String, UserData> strictUsers = new HashMap<>();
+    private static Map<String, UserData> guessedUsers = new HashMap<>();
     private final GitHubRepository repo;
 
     UserDataDeserializer(GitHubRepository repo) {
@@ -32,27 +34,42 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
     @Override
     public UserData deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
         String username = json.getAsJsonObject().get("login").getAsString();
-        if (users.containsKey(username)) return users.get(username);
+
+        Map<String, UserData> lookupList = repo.allowGuessing() ? guessedUsers : strictUsers;
+
+        if (lookupList.containsKey(username)) return lookupList.get(username);
 
         UserData user = new UserData();
         user.username = username;
-        user.email = guessEmails(json);
-        users.put(username, user);
+        user.email = determineEmail(json);
+        lookupList.put(username, user);
         return user;
     }
 
     /**
-     * Tries guessing the email by looking at the history for this user and getting the email which is used most often in
-     * the list of pushed commits.
+     * Tries getting the email, first by looking if a public email is set on the profile and if not, tries to guess the
+     * email by looking at the history for this user and getting the email which is used most often in the list of
+     * pushed commits.
      *
      * @param user
      *         the JsonElement representing the data about a user
      * @return the most probable email for this user
      */
-    private String guessEmails(JsonElement user) {
-        Optional<String> eventsData = repo.getJSONStringFromURL(user.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));
+    private String determineEmail(JsonElement user) {
         JsonParser parser = new JsonParser();
-        JsonElement data = parser.parse(eventsData.orElse(""));
+
+        // first look at profile
+        Optional<String> userData = repo.getJSONStringFromURL(user.getAsJsonObject().get("url").getAsString());
+        JsonElement data = parser.parse(userData.orElse(""));
+        JsonElement email = data.getAsJsonObject().get("email");
+        if (!(email instanceof JsonNull)) return email.getAsString();
+
+        // if we don't want to guess for emails, stop here and don't look at user history
+        if (!repo.allowGuessing()) return "";
+
+        // get list of recent pushes
+        Optional<String> eventsData = repo.getJSONStringFromURL(user.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));
+        data = parser.parse(eventsData.orElse(""));
 
         Map<String, Integer> emails = new HashMap<>();
         data.getAsJsonArray().forEach(e -> {
@@ -70,6 +87,7 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
         List<Map.Entry<String, Integer>> posMails = new ArrayList<>(emails.entrySet());
         if (posMails.isEmpty()) return "";
 
+        // get email with most entries
         posMails.sort(Comparator.comparingInt(Map.Entry::getValue));
         return posMails.get(posMails.size() - 1).getKey();
     }
