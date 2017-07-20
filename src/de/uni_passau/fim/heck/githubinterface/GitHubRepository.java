@@ -447,7 +447,7 @@ public class GitHubRepository extends Repository {
                 try (BufferedReader buffer = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()))) {
                     data.add(buffer.lines().collect(Collectors.joining("\n")));
                 }
-                resp.getEntity().getContent()-close
+                resp.getEntity().getContent().close();
 
                 if (!next.isPresent()) break;
                 String nextUrl = next.get();
