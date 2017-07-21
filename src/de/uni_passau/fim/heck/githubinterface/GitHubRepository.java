@@ -10,11 +10,14 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -54,17 +57,19 @@ public class GitHubRepository extends Repository {
 
     private static final Logger LOG = Logger.getLogger(GitHubRepository.class.getCanonicalName());
 
+    private static final Set<Token> tokens = new HashSet<>();
+
+    private final GitWrapper git;
     private final Repository repo;
     private final Gson gson;
     private final HttpClient hc;
 
     private final String apiBaseURL;
-    private final TokenPool token = TokenPool.getInstance();
-    private final GitWrapper git;
     private final File dir;
-
     private List<PullRequest> pullRequests;
+
     private boolean allowGuessing;
+    private boolean sleepOnApiLimit;
 
     /**
      * Create a wrapper around a (local) repository with additional information about GitHub hosted repositories.
@@ -91,42 +96,22 @@ public class GitHubRepository extends Repository {
      *         information about creating such tokens)
      */
     public GitHubRepository(Repository repo, GitWrapper git, String oauthToken) {
-        this.repo = repo;
-        String repoUrl = repo.getUrl();
-        if (repoUrl.contains("git@")) {
-            repoUrl = repoUrl.replace(":", "/").replace("git@", "https://");
-        }
-        apiBaseURL = repoUrl.replace(".git", "").replace("//github.com/", "//api.github.com/repos/");
-        LOG.fine(String.format("Creating repo for %s", apiBaseURL));
-        this.git = git;
-        dir = repo.getDir();
-        
-        tokenPoll.addToken(new Token(oauthToken));
-
-        GsonFireBuilder gfb = new GsonFireBuilder();
-        gfb.registerPostProcessor(IssueData.class, new IssueDataPostprocessor(this));
-        GsonBuilder gb = gfb.createGsonBuilder();
-        gb.registerTypeAdapter(Commit.class, new CommitSerializer());
-        gb.registerTypeAdapter(UserData.class, new UserDataDeserializer(this));
-        gb.registerTypeAdapter(EventData.class, new EventDataDeserializer());
-        gson = gb.create();
-
-        hc = HttpClients.createDefault();
+        this(repo, git, Collections.singletonList(oauthToken));
     }
-    
-     /**
+
+    /**
      * Create a wrapper around a (local) Repository with additional information about GitHub hosted repositories.
      *
      * @param repo
      *         the local repository
      * @param git
      *         the GitWrapper instance to use
-     * @param oauthTokenList
-     *         a valid oAuth list of token for GitHub
+     * @param oauthToken
+     *         a list of valid oAuth token for GitHub
      *         (see  <a href="https://github.com/settings/tokens">https://github.com/settings/tokens</a>) for
      *         information about creating such tokens)
      */
-    public GitHubRepository(Repository repo, GitWrapper git, List<String> oauthTokenList) {
+    public GitHubRepository(Repository repo, GitWrapper git, List<String> oauthToken) {
         this.repo = repo;
         String repoUrl = repo.getUrl();
         if (repoUrl.contains("git@")) {
@@ -136,11 +121,8 @@ public class GitHubRepository extends Repository {
         LOG.fine(String.format("Creating repo for %s", apiBaseURL));
         this.git = git;
         dir = repo.getDir();
-        
-        for(String oauthToken : oauthTokenList){
-            tokenPoll.addToken(new Token(oauthToken))
-        }
-        this.oauthToken = oauthToken;
+
+        oauthToken.stream().map(Token::new).forEach(tokens::add);
 
         GsonFireBuilder gfb = new GsonFireBuilder();
         gfb.registerPostProcessor(IssueData.class, new IssueDataPostprocessor(this));
@@ -152,7 +134,7 @@ public class GitHubRepository extends Repository {
 
         hc = HttpClients.createDefault();
     }
-    
+
     /**
      * Gets a List of PullRequests.
      *
@@ -409,35 +391,40 @@ public class GitHubRepository extends Repository {
      * @return an InputStreamReader on the result
      */
     Optional<String> getJSONStringFromURL(String urlString) {
-        String url;
         String json;
         LOG.fine(String.format("Getting json from %s", urlString));
         try {
-            String sep = "?";
-            if (urlString.contains("?")) sep = "&";
-            String count = "&per_page=100";
-            final String tokenPlaceholder = "API_TOKEN";
-            Token oauthToken = tokenPool.getToken();
-
             List<String> data = new ArrayList<>();
-            url = urlString + sep + "access_token=" + oauthToken + count;
+            String url = urlString + (urlString.contains("?") ? "&" : "?") + "per_page=100";
+
+            Optional<Token> optToken = getValidToken();
+            if (!optToken.isPresent()) {
+                LOG.warning("No token available");
+                return Optional.empty();
+            }
+            Token token = optToken.get();
 
             do {
-                HttpResponse resp = hc.execute(new HttpGet(url.replace(tokenPlaceholder, oauthToken.toString())));
+                HttpResponse resp = hc.execute(new HttpGet(url + (token.getToken().isEmpty() ? "" : "&access_token=" + token)));
 
                 Map<String, List<String>> headers = Arrays.stream(resp.getAllHeaders())
                         .collect(Collectors.toMap(Header::getName,
                                 h -> new ArrayList<>(Collections.singletonList(h.getValue())),
                                 (a, b) -> {a.addAll(b); return a;}));
 
-                Integer rateLimitRemaining = Integer.valueOf(headers.getOrDefault("X-RateLimit-Remaining",
-                        Arrays.asList("")).get(0));
-                oauthToken.updateTokenCalls(rateLimitRemaining);
-                
-                //We define 5, randomly, just to avoid different threads
-                //requesting a token at the same time
-                if (oauthToken.getCalls() < 5) {
-                    oauthToken = tokenPool.getToken();
+                int rateLimitRemaining = Integer.parseInt(headers.getOrDefault("X-RateLimit-Remaining", Collections.singletonList("")).get(0));
+                Date rateLimitReset = new Date(Long.parseLong(headers.get("X-RateLimit-Reset").get(0)) * 1000);
+                token.update(rateLimitRemaining, rateLimitReset);
+
+                // if the call failed, fetch a new token and try again.
+                if (!token.isValid()) {
+                    optToken = getValidToken();
+                    if (!optToken.isPresent()) {
+                        LOG.warning("No token available");
+                        return Optional.empty();
+                    }
+                    token = optToken.get();
+                    continue;
                 }
 
                 Optional<String> next = Arrays.stream(headers.getOrDefault("Link",
@@ -462,6 +449,28 @@ public class GitHubRepository extends Repository {
             return Optional.empty();
         }
         return json == null || json.isEmpty() ? Optional.empty() : Optional.of(json);
+    }
+
+    /**
+     * Gets a valid API Token.
+     * If waiting for the reset of an exhausted token is allowed, this call will block until the first token with free
+     * calls is available.
+     *
+     * @return a valid token, or an empty Optional if none is found and waiting is not allowed.
+     * @see #sleepOnApiLimit(boolean)
+     */
+    private Optional<Token> getValidToken() {
+        Optional<Token> optToken = tokens.stream().filter(Token::isValid).findFirst();
+        if (sleepOnApiLimit && !optToken.isPresent()) {
+            try {
+                LOG.info(String.format("Waiting until %s before the next token is available.", tokenResetTime()));
+                Thread.sleep(tokenResetTime().toInstant().minusMillis(System.currentTimeMillis()).toEpochMilli());
+            } catch (InterruptedException e) {
+                return getValidToken();
+            }
+            return getValidToken();
+        }
+        return optToken;
     }
 
     /**
@@ -501,6 +510,29 @@ public class GitHubRepository extends Repository {
      */
     public void allowGuessing(boolean guess) {
         allowGuessing = guess;
+    }
+
+    /**
+     * Setter for toggling waiting on exhausted API rate limit.
+     * Default is {@code false}.
+     *
+     * @param sleepOnApiLimit
+     *         if {@code true}, all API calls will wait until the call blocked due to rate limiting succeeds again
+     *
+     * @see #tokenResetTime()
+     */
+    public void sleepOnApiLimit(boolean sleepOnApiLimit) {
+        this.sleepOnApiLimit = sleepOnApiLimit;
+    }
+
+    /**
+     * Gets the earliest time, any of the active tokens can be used again.
+     *
+     * @return the time a single API call can succeed
+     */
+    public Date tokenResetTime() {
+        if (tokens.stream().anyMatch(Token::isValid)) return new Date();
+        return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).get();
     }
 
     /**
