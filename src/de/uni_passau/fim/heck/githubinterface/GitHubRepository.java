@@ -503,6 +503,7 @@ public class GitHubRepository extends Repository {
 
     /**
      * Setter for toggling strict email determination method.
+     * Default is {@code false}.
      *
      * @param guess
      *         if {@code true}, guessing of user email is allowed
@@ -518,7 +519,6 @@ public class GitHubRepository extends Repository {
      *
      * @param sleepOnApiLimit
      *         if {@code true}, all API calls will wait until the call blocked due to rate limiting succeeds again
-     *
      * @see #tokenResetTime()
      */
     public void sleepOnApiLimit(boolean sleepOnApiLimit) {
