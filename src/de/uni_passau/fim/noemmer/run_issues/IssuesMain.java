@@ -71,39 +71,39 @@ public class IssuesMain {
     }
 
     private static void removeExcess(JsonObject issueJson) {
-        if (issueJson.has("url"))
-            issueJson.remove("url");
-
-        if (issueJson.has("body"))
-            issueJson.remove("body");
-
-        if (issueJson.has("title"))
-            issueJson.remove("title");
-
         if (issueJson.has("user") && issueJson.get("user") instanceof JsonObject) {
             JsonElement buffer = ((JsonObject) issueJson.get("user")).get("userId");
             issueJson.add("user", buffer);
         }
-        if (issueJson.has("relatedCommits") && issueJson.get("relatedCommits") instanceof JsonArray) {
-            ((JsonArray) issueJson.get("relatedCommits")).forEach(commit -> {
-                ((JsonObject) commit).remove("time");
-                ((JsonObject) commit).remove("author");
-            });
-        }
-        if (issueJson.has("commentsList") && issueJson.get("commentsList") instanceof JsonArray) {
+
+        if (issueJson.has("title"))
+            issueJson.remove("title");
+
+        if (issueJson.has("body"))
+            issueJson.remove("body");
+
+        if (issueJson.has("url"))
+            issueJson.remove("url");
+
+        if (issueJson.has("commentsList") && issueJson.get("commentsList") instanceof JsonArray)
             ((JsonArray) issueJson.get("commentsList")).forEach(j -> {
                 if (j instanceof JsonObject) {
                     removeExcess((JsonObject) j);
                 }
             });
-        }
-        if (issueJson.has("eventsList") && issueJson.get("eventsList") instanceof JsonArray) {
+
+        if (issueJson.has("eventsList") && issueJson.get("eventsList") instanceof JsonArray)
             ((JsonArray) issueJson.get("eventsList")).forEach(j -> {
                 if (j instanceof JsonObject) {
                     removeExcess((JsonObject) j);
                 }
             });
-        }
+
+        if (issueJson.has("relatedCommits") && issueJson.get("relatedCommits") instanceof JsonArray)
+            ((JsonArray) issueJson.get("relatedCommits")).forEach(commit -> {
+                ((JsonObject) commit).remove("time");
+                ((JsonObject) commit).remove("author");
+            });
     }
 
     private static void insertUserIds(JsonObject issueJson) {
