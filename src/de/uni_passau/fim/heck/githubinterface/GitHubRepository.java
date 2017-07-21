@@ -407,6 +407,11 @@ public class GitHubRepository extends Repository {
             do {
                 HttpResponse resp = hc.execute(new HttpGet(url + (token.getToken().isEmpty() ? "" : "&access_token=" + token)));
 
+                if (resp.getStatusLine().getStatusCode() != 200) {
+                    LOG.warning(String.format("Could not access api method: %s returned %s", url, resp.getStatusLine()));
+                    return Optional.empty();
+                }
+
                 Map<String, List<String>> headers = Arrays.stream(resp.getAllHeaders())
                         .collect(Collectors.toMap(Header::getName,
                                 h -> new ArrayList<>(Collections.singletonList(h.getValue())),
