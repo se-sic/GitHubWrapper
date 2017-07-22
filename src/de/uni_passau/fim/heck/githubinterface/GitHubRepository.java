@@ -123,6 +123,7 @@ public class GitHubRepository extends Repository {
         dir = repo.getDir();
 
         oauthToken.stream().map(Token::new).forEach(tokens::add);
+        tokens.stream().anyMatch(Token::startingToken);
 
         GsonFireBuilder gfb = new GsonFireBuilder();
         gfb.registerPostProcessor(IssueData.class, new IssueDataPostprocessor(this));
@@ -408,7 +409,8 @@ public class GitHubRepository extends Repository {
                 HttpResponse resp = hc.execute(new HttpGet(url + (token.getToken().isEmpty() ? "" : "&access_token=" + token)));
 
                 if (resp.getStatusLine().getStatusCode() != 200) {
-                    LOG.warning(String.format("Could not access api method: %s returned %s", url, resp.getStatusLine()));
+                    LOG.warning(String.format("Could not access api method: %s returned %s. "
+                    		+ "It means more than five Threads tried to get 'resp' simultaneuosly", url, resp.getStatusLine()));
                     return Optional.empty();
                 }
 
@@ -423,7 +425,7 @@ public class GitHubRepository extends Repository {
 
                 // if the call failed, fetch a new token and try again.
                 if (!token.isValid()) {
-                    optToken = getValidToken();
+                    optToken = getValidDoubleCheckToken();
                     if (!optToken.isPresent()) {
                         LOG.warning("No token available");
                         return Optional.empty();
@@ -466,14 +468,28 @@ public class GitHubRepository extends Repository {
      */
     private Optional<Token> getValidToken() {
         Optional<Token> optToken = tokens.stream().filter(Token::isValid).findFirst();
-        if (sleepOnApiLimit && !optToken.isPresent()) {
+        if (sleepOnApiLimit || !optToken.isPresent()) {
             try {
                 LOG.info(String.format("Waiting until %s before the next token is available.", tokenResetTime()));
                 Thread.sleep(tokenResetTime().toInstant().minusMillis(System.currentTimeMillis()).toEpochMilli());
             } catch (InterruptedException e) {
-                return getValidToken();
+                return getValidDoubleCheckToken();
             }
-            return getValidToken();
+            return getValidDoubleCheckToken();
+        }
+        return optToken;
+    }
+    
+    private Optional<Token> getValidDoubleCheckToken() {
+        Optional<Token> optToken = tokens.stream().filter(Token::isUpdatedValid).findFirst();
+        if (sleepOnApiLimit || !optToken.isPresent()) {
+            try {
+                LOG.info(String.format("Waiting until %s before the next token is available. Double Check", tokenResetTime()));
+                Thread.sleep(tokenResetTime().toInstant().minusMillis(System.currentTimeMillis()).toEpochMilli());
+            } catch (InterruptedException e) {
+                return getValidDoubleCheckToken();
+            }
+            return getValidDoubleCheckToken();
         }
         return optToken;
     }
@@ -527,7 +543,7 @@ public class GitHubRepository extends Repository {
      * @see #tokenResetTime()
      */
     public void sleepOnApiLimit(boolean sleepOnApiLimit) {
-        this.sleepOnApiLimit = sleepOnApiLimit;
+       this.sleepOnApiLimit = sleepOnApiLimit;
     }
 
     /**
@@ -536,7 +552,7 @@ public class GitHubRepository extends Repository {
      * @return the time a single API call can succeed
      */
     public Date tokenResetTime() {
-        if (tokens.stream().anyMatch(Token::isValid)) return new Date();
+        if (tokens.stream().anyMatch(Token::isUpdatedValid)) return new Date();
         return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).get();
     }
 
@@ -637,7 +653,7 @@ public class GitHubRepository extends Repository {
     }
 
     @Override
-    protected GitWrapper getGit() {
+    public GitWrapper getGit() {
         return git;
     }
 
