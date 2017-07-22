@@ -7,6 +7,7 @@ import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -17,7 +18,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -58,6 +62,7 @@ public class GitHubRepository extends Repository {
     private static final Logger LOG = Logger.getLogger(GitHubRepository.class.getCanonicalName());
 
     private static final Set<Token> tokens = new HashSet<>();
+    private static final Queue<Thread> tokenWaitList = new ConcurrentLinkedQueue<>();
 
     private final GitWrapper git;
     private final Repository repo;
@@ -68,8 +73,8 @@ public class GitHubRepository extends Repository {
     private final File dir;
     private List<PullRequest> pullRequests;
 
-    private boolean allowGuessing;
-    private boolean sleepOnApiLimit;
+    private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
+    private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(false);
 
     /**
      * Create a wrapper around a (local) repository with additional information about GitHub hosted repositories.
@@ -122,7 +127,9 @@ public class GitHubRepository extends Repository {
         this.git = git;
         dir = repo.getDir();
 
-        oauthToken.stream().map(Token::new).forEach(tokens::add);
+        synchronized (tokens) {
+            oauthToken.stream().map(Token::new).forEach(tokens::add);
+        }
 
         GsonFireBuilder gfb = new GsonFireBuilder();
         gfb.registerPostProcessor(IssueData.class, new IssueDataPostprocessor(this));
@@ -353,21 +360,23 @@ public class GitHubRepository extends Repository {
         if (end != null) params.add("--until=" + df.format(end));
         if (start != null) params.add("--since=" + df.format(start));
         if (onlyMerges) params.add("--merges");
-        Optional<ProcessExecutor.ExecRes> commitList = git.exec(dir, "log", params.toArray(new String[0]));
-        Function<ProcessExecutor.ExecRes, List<Commit>> toCommitList = res -> {
-            if (git.failed(res)) {
-                LOG.warning(() -> String.format("Failed to obtain the commits from %s.", this));
-                return null;
-            }
+        synchronized (git) {
+            Optional<ProcessExecutor.ExecRes> commitList = git.exec(dir, "log", params.toArray(new String[0]));
+            Function<ProcessExecutor.ExecRes, List<Commit>> toCommitList = res -> {
+                if (git.failed(res)) {
+                    LOG.warning(() -> String.format("Failed to obtain the commits from %s.", this));
+                    return null;
+                }
 
-            if (res.getStdOutTrimmed().isEmpty()) {
-                return new ArrayList<>();
-            }
+                if (res.getStdOutTrimmed().isEmpty()) {
+                    return new ArrayList<>();
+                }
 
-            return Arrays.stream(res.getStdOutTrimmed().split("\\s+")).map(this::getCommitUnchecked).collect(Collectors.toList());
-        };
+                return Arrays.stream(res.getStdOutTrimmed().split("\\s+")).map(this::getCommitUnchecked).collect(Collectors.toList());
+            };
 
-        return commitList.map(toCommitList);
+            return commitList.map(toCommitList);
+        }
     }
 
     /**
@@ -397,54 +406,61 @@ public class GitHubRepository extends Repository {
             List<String> data = new ArrayList<>();
             String url = urlString + (urlString.contains("?") ? "&" : "?") + "per_page=100";
 
-            Optional<Token> optToken = getValidToken();
-            if (!optToken.isPresent()) {
-                LOG.warning("No token available");
-                return Optional.empty();
-            }
-            Token token = optToken.get();
-
-            do {
-                HttpResponse resp = hc.execute(new HttpGet(url + (token.getToken().isEmpty() ? "" : "&access_token=" + token)));
-
-                if (resp.getStatusLine().getStatusCode() != 200) {
-                    LOG.warning(String.format("Could not access api method: %s returned %s", url, resp.getStatusLine()));
+            Token token = null;
+            try {
+                Optional<Token> optToken = getValidToken();
+                if (!optToken.isPresent()) {
+                    LOG.warning("No token available");
                     return Optional.empty();
                 }
+                token = optToken.get();
 
-                Map<String, List<String>> headers = Arrays.stream(resp.getAllHeaders())
-                        .collect(Collectors.toMap(Header::getName,
-                                h -> new ArrayList<>(Collections.singletonList(h.getValue())),
-                                (a, b) -> {a.addAll(b); return a;}));
+                do {
+                    HttpResponse resp = hc.execute(new HttpGet(url + (token.getToken().isEmpty() ? "" : "&access_token=" + token.getToken())));
 
-                int rateLimitRemaining = Integer.parseInt(headers.getOrDefault("X-RateLimit-Remaining", Collections.singletonList("")).get(0));
-                Date rateLimitReset = new Date(Long.parseLong(headers.get("X-RateLimit-Reset").get(0)) * 1000);
-                token.update(rateLimitRemaining, rateLimitReset);
-
-                // if the call failed, fetch a new token and try again.
-                if (!token.isValid()) {
-                    optToken = getValidToken();
-                    if (!optToken.isPresent()) {
-                        LOG.warning("No token available");
+                    if (resp.getStatusLine().getStatusCode() != 200) {
+                        LOG.warning(String.format("Could not access api method: %s returned %s", url, resp.getStatusLine()));
                         return Optional.empty();
                     }
-                    token = optToken.get();
-                    continue;
-                }
 
-                Optional<String> next = Arrays.stream(headers.getOrDefault("Link",
+                    Map<String, List<String>> headers = Arrays.stream(resp.getAllHeaders())
+                            .collect(Collectors.toMap(Header::getName,
+                                    h -> new ArrayList<>(Collections.singletonList(h.getValue())),
+                                    (a, b) -> {a.addAll(b); return a;}));
+
+                    int rateLimitRemaining = Integer.parseInt(headers.getOrDefault("X-RateLimit-Remaining", Collections.singletonList("")).get(0));
+                    Instant rateLimitReset = Instant.ofEpochMilli(Long.parseLong(headers.get("X-RateLimit-Reset").get(0)) * 1000);
+                    token.update(rateLimitRemaining, rateLimitReset);
+
+                    // if the call failed, fetch a new token and try again.
+                    if (!token.isUsable()) {
+                        releaseToken(token);
+                        optToken = getValidToken();
+                        if (!optToken.isPresent()) {
+                            LOG.warning("No token available");
+                            return Optional.empty();
+                        }
+                        token = optToken.get();
+                        continue;
+                    }
+
+                    Optional<String> next = Arrays.stream(headers.getOrDefault("Link",
                             new ArrayList<>(Collections.singleton(""))
-                        ).get(0).split(","))
-                    .filter(link -> link.contains("next")).findFirst();
-                try (BufferedReader buffer = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()))) {
-                    data.add(buffer.lines().collect(Collectors.joining("\n")));
-                }
-                resp.getEntity().getContent().close();
+                    ).get(0).split(","))
+                            .filter(link -> link.contains("next")).findFirst();
+                    try (BufferedReader buffer = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()))) {
+                        data.add(buffer.lines().collect(Collectors.joining("\n")));
+                    }
+                    resp.getEntity().getContent().close();
 
-                if (!next.isPresent()) break;
-                String nextUrl = next.get();
-                url = nextUrl.substring(nextUrl.indexOf("<") + 1, nextUrl.indexOf(">"));
-            } while (true);
+                    if (!next.isPresent()) break;
+                    String nextUrl = next.get();
+                    url = nextUrl.substring(nextUrl.indexOf("<") + 1, nextUrl.indexOf(">"));
+                } while (true);
+
+            } finally {
+                if (token != null) releaseToken(token);
+            }
 
             // concatenate all results together, making one large JSON string
            json = String.join("", data).replace("][", ",");
@@ -453,6 +469,7 @@ public class GitHubRepository extends Repository {
             LOG.warning("Could not get data from GitHub.");
             return Optional.empty();
         }
+
         return json == null || json.isEmpty() ? Optional.empty() : Optional.of(json);
     }
 
@@ -460,22 +477,47 @@ public class GitHubRepository extends Repository {
      * Gets a valid API Token.
      * If waiting for the reset of an exhausted token is allowed, this call will block until the first token with free
      * calls is available.
+     * This method will {@link Token#acquire() acquire} the lock on the Token, if one is returned, the caller is
+     * responsible for releasing the lock, once he does not need it any more.
      *
      * @return a valid token, or an empty Optional if none is found and waiting is not allowed.
      * @see #sleepOnApiLimit(boolean)
+     * @see #releaseToken(Token)
      */
     private Optional<Token> getValidToken() {
-        Optional<Token> optToken = tokens.stream().filter(Token::isValid).findFirst();
-        if (sleepOnApiLimit && !optToken.isPresent()) {
-            try {
-                LOG.info(String.format("Waiting until %s before the next token is available.", tokenResetTime()));
-                Thread.sleep(tokenResetTime().toInstant().minusMillis(System.currentTimeMillis()).toEpochMilli());
-            } catch (InterruptedException e) {
+        synchronized (tokens) {
+            Optional<Token> optToken = tokens.stream().filter(Token::isValid).filter(Token::acquire).findFirst();
+            if (sleepOnApiLimit() && !optToken.isPresent()) {
+                try {
+                    LOG.info(String.format("Waiting until %s before the next token is available.", tokenResetTime()));
+                    tokenWaitList.add(Thread.currentThread());
+                    Thread.sleep(tokenResetTime().minusMillis(System.currentTimeMillis()).toEpochMilli());
+                } catch (InterruptedException e) {
+                    return getValidToken();
+                }
                 return getValidToken();
             }
-            return getValidToken();
+            if (optToken.isPresent()) {
+                LOG.fine(Thread.currentThread() + " acquired token " + tokens);
+            }
+            return optToken;
         }
-        return optToken;
+    }
+
+    /**
+     * {@link Token#release() Releases} the Token and informs the next one waiting.
+     *
+     * @param token
+     *         the Token to release
+     */
+    private void releaseToken(Token token) {
+        token.release();
+        LOG.fine(Thread.currentThread() + " released token " + token);
+        Thread next = tokenWaitList.poll();
+        if (next != null) {
+            LOG.fine("Waking up " + next + " waiting on token");
+            next.interrupt();
+        }
     }
 
     /**
@@ -484,16 +526,18 @@ public class GitHubRepository extends Repository {
      * @return {@code true} if successful
      */
     public boolean cleanup() {
-        Optional<ProcessExecutor.ExecRes> result = git.exec(dir, "clean", "-d", "-x", "-f");
-        Function<ProcessExecutor.ExecRes, Boolean> toBoolean = res -> {
-            if (git.failed(res)) {
-                LOG.warning("Failed to clean directory");
-                return false;
-            }
-            return true;
-        };
+        synchronized (git) {
+            Optional<ProcessExecutor.ExecRes> result = git.exec(dir, "clean", "-d", "-x", "-f");
+            Function<ProcessExecutor.ExecRes, Boolean> toBoolean = res -> {
+                if (git.failed(res)) {
+                    LOG.warning("Failed to clean directory");
+                    return false;
+                }
+                return true;
+            };
 
-        return result.map(toBoolean).orElse(false);
+            return result.map(toBoolean).orElse(false);
+        }
     }
 
     /**
@@ -503,41 +547,65 @@ public class GitHubRepository extends Repository {
      * @see #allowGuessing(boolean)
      */
     boolean allowGuessing() {
-        return allowGuessing;
+        synchronized (allowGuessing) {
+            return allowGuessing.get();
+        }
     }
 
     /**
      * Setter for toggling strict email determination method.
      * Default is {@code false}.
+     * This is a global switch and takes immediate effect on all running and future requests.
      *
      * @param guess
      *         if {@code true}, guessing of user email is allowed
      * @see #allowGuessing()
      */
     public void allowGuessing(boolean guess) {
-        allowGuessing = guess;
+        synchronized (allowGuessing) {
+            allowGuessing.set(guess);
+        }
     }
 
     /**
      * Setter for toggling waiting on exhausted API rate limit.
      * Default is {@code false}.
+     * This is a global switch and takes immediate effect on all running and future requests.
      *
      * @param sleepOnApiLimit
      *         if {@code true}, all API calls will wait until the call blocked due to rate limiting succeeds again
      * @see #tokenResetTime()
      */
     public void sleepOnApiLimit(boolean sleepOnApiLimit) {
-        this.sleepOnApiLimit = sleepOnApiLimit;
+        synchronized (this.sleepOnApiLimit) {
+            this.sleepOnApiLimit.set(sleepOnApiLimit);
+        }
+    }
+
+    /**
+     * Gets, if the execution is waiting on an API token to becomes available if all tokens are exhausted.
+     *
+     * @return {@code true} if a sleeping is requested.
+     * @see #sleepOnApiLimit(boolean)
+     */
+    private boolean sleepOnApiLimit() {
+        synchronized (sleepOnApiLimit) {
+            return sleepOnApiLimit.get();
+        }
     }
 
     /**
      * Gets the earliest time, any of the active tokens can be used again.
+     * If there are valid tokens but all are locked, this will return {@code now + 10 seconds}.
      *
-     * @return the time a single API call can succeed
+     * @return the earliest time a single API call can succeed
      */
-    public Date tokenResetTime() {
-        if (tokens.stream().anyMatch(Token::isValid)) return new Date();
-        return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).get();
+    public static Instant tokenResetTime() {
+        synchronized (tokens) {
+            if (tokens.stream().anyMatch(Token::isUsable)) return Instant.now();
+            if (tokens.stream().anyMatch(Token::isValid))  return Instant.now().plusSeconds(10);
+            return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).get();
+        }
     }
 
     /**

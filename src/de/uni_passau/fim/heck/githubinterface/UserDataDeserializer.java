@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
@@ -23,8 +24,8 @@ import de.uni_passau.fim.heck.githubinterface.datadefinitions.UserData;
  */
 public class UserDataDeserializer implements JsonDeserializer<UserData> {
 
-    private static Map<String, UserData> strictUsers = new HashMap<>();
-    private static Map<String, UserData> guessedUsers = new HashMap<>();
+    private static Map<String, UserData> strictUsers = new ConcurrentHashMap<>();
+    private static Map<String, UserData> guessedUsers = new ConcurrentHashMap<>();
     private final GitHubRepository repo;
 
     UserDataDeserializer(GitHubRepository repo) {

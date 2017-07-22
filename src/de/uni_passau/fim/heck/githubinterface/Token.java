@@ -1,20 +1,23 @@
 package de.uni_passau.fim.heck.githubinterface;
 
-import java.util.Date;
+import java.time.Instant;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class Token {
 
+    private ReentrantLock lock = new ReentrantLock();
+
     private final String token;
     private int calls;
-    private Date resetTime;
+    private Instant resetTime;
 
     Token(String token) {
         this.token = token;
         this.calls = Integer.MAX_VALUE;
-        this.resetTime = new Date();
+        this.resetTime = Instant.now();
     }
 
-    Token(String token, int calls, Date resetTime) {
+    Token(String token, int calls, Instant resetTime) {
         this.token = token;
         this.calls = calls;
         this.resetTime = resetTime;
@@ -24,22 +27,29 @@ public class Token {
         return token;
     }
 
-    void update(int calls, Date resetTime) {
+    void update(int calls, Instant resetTime) {
         this.calls = calls;
         this.resetTime = resetTime;
     }
 
-    public boolean isValid() {
-       return calls > 0 || new Date().after(resetTime);
+    boolean isValid() {
+        return calls > 0 || Instant.now().isAfter(resetTime);
     }
 
-    Date getResetTime() {
+    public boolean isUsable() {
+        return (!lock.isLocked() || lock.isHeldByCurrentThread()) && isValid();
+    }
+
+    boolean acquire() {
+        return lock.tryLock();
+    }
+
+    void release() {
+        lock.unlock();
+    }
+
+    Instant getResetTime() {
         return resetTime;
-    }
-
-    @Override
-    public String toString() {
-        return token;
     }
 
     @Override
