@@ -360,23 +360,21 @@ public class GitHubRepository extends Repository {
         if (end != null) params.add("--until=" + df.format(end));
         if (start != null) params.add("--since=" + df.format(start));
         if (onlyMerges) params.add("--merges");
-        synchronized (git) {
-            Optional<ProcessExecutor.ExecRes> commitList = git.exec(dir, "log", params.toArray(new String[0]));
-            Function<ProcessExecutor.ExecRes, List<Commit>> toCommitList = res -> {
-                if (git.failed(res)) {
-                    LOG.warning(() -> String.format("Failed to obtain the commits from %s.", this));
-                    return null;
-                }
+        Optional<ProcessExecutor.ExecRes> commitList = git.exec(dir, "log", params.toArray(new String[0]));
+        Function<ProcessExecutor.ExecRes, List<Commit>> toCommitList = res -> {
+            if (git.failed(res)) {
+                LOG.warning(() -> String.format("Failed to obtain the commits from %s.", this));
+                return null;
+            }
 
-                if (res.getStdOutTrimmed().isEmpty()) {
-                    return new ArrayList<>();
-                }
+            if (res.getStdOutTrimmed().isEmpty()) {
+                return new ArrayList<>();
+            }
 
-                return Arrays.stream(res.getStdOutTrimmed().split("\\s+")).map(this::getCommitUnchecked).collect(Collectors.toList());
-            };
+            return Arrays.stream(res.getStdOutTrimmed().split("\\s+")).map(this::getCommitUnchecked).collect(Collectors.toList());
+        };
 
-            return commitList.map(toCommitList);
-        }
+        return commitList.map(toCommitList);
     }
 
     /**
@@ -594,18 +592,16 @@ public class GitHubRepository extends Repository {
      * @return {@code true} if successful
      */
     public boolean cleanup() {
-        synchronized (git) {
-            Optional<ProcessExecutor.ExecRes> result = git.exec(dir, "clean", "-d", "-x", "-f");
-            Function<ProcessExecutor.ExecRes, Boolean> toBoolean = res -> {
-                if (git.failed(res)) {
-                    LOG.warning("Failed to clean directory");
-                    return false;
-                }
-                return true;
-            };
+        Optional<ProcessExecutor.ExecRes> result = git.exec(dir, "clean", "-d", "-x", "-f");
+        Function<ProcessExecutor.ExecRes, Boolean> toBoolean = res -> {
+            if (git.failed(res)) {
+                LOG.warning("Failed to clean directory");
+                return false;
+            }
+            return true;
+        };
 
-            return result.map(toBoolean).orElse(false);
-        }
+        return result.map(toBoolean).orElse(false);
     }
 
     /**
