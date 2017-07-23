@@ -521,22 +521,43 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Cleans up the working directory.
+     * Gets the earliest time, any of the active tokens can be used again.
+     * If there are valid tokens but all are locked, this will return {@code now + 10 seconds}.
      *
-     * @return {@code true} if successful
+     * @return the earliest time a single API call can succeed
      */
-    public boolean cleanup() {
-        synchronized (git) {
-            Optional<ProcessExecutor.ExecRes> result = git.exec(dir, "clean", "-d", "-x", "-f");
-            Function<ProcessExecutor.ExecRes, Boolean> toBoolean = res -> {
-                if (git.failed(res)) {
-                    LOG.warning("Failed to clean directory");
-                    return false;
-                }
-                return true;
-            };
+    public static Instant tokenResetTime() {
+        synchronized (tokens) {
+            if (tokens.stream().anyMatch(Token::isUsable)) return Instant.now();
+            if (tokens.stream().anyMatch(Token::isValid))  return Instant.now().plusSeconds(10);
+            return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).get();
+        }
+    }
 
-            return result.map(toBoolean).orElse(false);
+    /**
+     * Gets, if the execution is waiting on an API token to becomes available if all tokens are exhausted.
+     *
+     * @return {@code true} if a sleeping is requested.
+     * @see #sleepOnApiLimit(boolean)
+     */
+    private boolean sleepOnApiLimit() {
+        synchronized (sleepOnApiLimit) {
+            return sleepOnApiLimit.get();
+        }
+    }
+
+    /**
+     * Setter for toggling waiting on exhausted API rate limit.
+     * Default is {@code false}.
+     * This is a global switch and takes immediate effect on all running and future requests.
+     *
+     * @param sleepOnApiLimit
+     *         if {@code true}, all API calls will wait until the call blocked due to rate limiting succeeds again
+     * @see #tokenResetTime()
+     */
+    public void sleepOnApiLimit(boolean sleepOnApiLimit) {
+        synchronized (this.sleepOnApiLimit) {
+            this.sleepOnApiLimit.set(sleepOnApiLimit);
         }
     }
 
@@ -568,43 +589,22 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Setter for toggling waiting on exhausted API rate limit.
-     * Default is {@code false}.
-     * This is a global switch and takes immediate effect on all running and future requests.
+     * Cleans up the working directory.
      *
-     * @param sleepOnApiLimit
-     *         if {@code true}, all API calls will wait until the call blocked due to rate limiting succeeds again
-     * @see #tokenResetTime()
+     * @return {@code true} if successful
      */
-    public void sleepOnApiLimit(boolean sleepOnApiLimit) {
-        synchronized (this.sleepOnApiLimit) {
-            this.sleepOnApiLimit.set(sleepOnApiLimit);
-        }
-    }
+    public boolean cleanup() {
+        synchronized (git) {
+            Optional<ProcessExecutor.ExecRes> result = git.exec(dir, "clean", "-d", "-x", "-f");
+            Function<ProcessExecutor.ExecRes, Boolean> toBoolean = res -> {
+                if (git.failed(res)) {
+                    LOG.warning("Failed to clean directory");
+                    return false;
+                }
+                return true;
+            };
 
-    /**
-     * Gets, if the execution is waiting on an API token to becomes available if all tokens are exhausted.
-     *
-     * @return {@code true} if a sleeping is requested.
-     * @see #sleepOnApiLimit(boolean)
-     */
-    private boolean sleepOnApiLimit() {
-        synchronized (sleepOnApiLimit) {
-            return sleepOnApiLimit.get();
-        }
-    }
-
-    /**
-     * Gets the earliest time, any of the active tokens can be used again.
-     * If there are valid tokens but all are locked, this will return {@code now + 10 seconds}.
-     *
-     * @return the earliest time a single API call can succeed
-     */
-    public static Instant tokenResetTime() {
-        synchronized (tokens) {
-            if (tokens.stream().anyMatch(Token::isUsable)) return Instant.now();
-            if (tokens.stream().anyMatch(Token::isValid))  return Instant.now().plusSeconds(10);
-            return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).get();
+            return result.map(toBoolean).orElse(false);
         }
     }
 
