@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.reflect.Array;
 import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -26,9 +27,7 @@ import java.util.function.Function;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonSyntaxException;
+import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
@@ -79,10 +78,8 @@ public class GitHubRepository extends Repository {
     /**
      * Create a wrapper around a (local) repository with additional information about GitHub hosted repositories.
      *
-     * @param repo
-     *         the local Repository
-     * @param git
-     *         the GitWrapper instance to use
+     * @param repo the local Repository
+     * @param git  the GitWrapper instance to use
      */
     public GitHubRepository(Repository repo, GitWrapper git) {
         this(repo, git, "");
@@ -91,14 +88,11 @@ public class GitHubRepository extends Repository {
     /**
      * Create a wrapper around a (local) Repository with additional information about GitHub hosted repositories.
      *
-     * @param repo
-     *         the local repository
-     * @param git
-     *         the GitWrapper instance to use
-     * @param oauthToken
-     *         a valid oAuth token for GitHub
-     *         (see  <a href="https://github.com/settings/tokens">https://github.com/settings/tokens</a>) for
-     *         information about creating such tokens)
+     * @param repo       the local repository
+     * @param git        the GitWrapper instance to use
+     * @param oauthToken a valid oAuth token for GitHub
+     *                   (see  <a href="https://github.com/settings/tokens">https://github.com/settings/tokens</a>) for
+     *                   information about creating such tokens)
      */
     public GitHubRepository(Repository repo, GitWrapper git, String oauthToken) {
         this(repo, git, Collections.singletonList(oauthToken));
@@ -107,14 +101,11 @@ public class GitHubRepository extends Repository {
     /**
      * Create a wrapper around a (local) Repository with additional information about GitHub hosted repositories.
      *
-     * @param repo
-     *         the local repository
-     * @param git
-     *         the GitWrapper instance to use
-     * @param oauthToken
-     *         a list of valid oAuth token for GitHub
-     *         (see  <a href="https://github.com/settings/tokens">https://github.com/settings/tokens</a>) for
-     *         information about creating such tokens)
+     * @param repo       the local repository
+     * @param git        the GitWrapper instance to use
+     * @param oauthToken a list of valid oAuth token for GitHub
+     *                   (see  <a href="https://github.com/settings/tokens">https://github.com/settings/tokens</a>) for
+     *                   information about creating such tokens)
      */
     public GitHubRepository(Repository repo, GitWrapper git, List<String> oauthToken) {
         this.repo = repo;
@@ -128,7 +119,9 @@ public class GitHubRepository extends Repository {
         dir = repo.getDir();
 
         synchronized (tokens) {
-            oauthToken.stream().map(Token::new).forEach(tokens::add);
+            for (String token : oauthToken) {
+                tokens.add(new Token(token));
+            }
         }
 
         GsonFireBuilder gfb = new GsonFireBuilder();
@@ -147,8 +140,7 @@ public class GitHubRepository extends Repository {
     /**
      * Gets a List of PullRequests.
      *
-     * @param filter
-     *         The state of the PullRequests to include (see {@link State#includes(State, State)})
+     * @param filter The state of the PullRequests to include (see {@link State#includes(State, State)})
      * @return optionally a List of PullRequests or an empty Optional, if an error occurred
      */
     public Optional<List<PullRequest>> getPullRequests(State filter) {
@@ -163,38 +155,76 @@ public class GitHubRepository extends Repository {
     /**
      * Gets a List of Issues.
      *
-     * @param includePullRequests
-     *         if {@code true}, will include {@link PullRequest PullRequests} as well
+     * @param includePullRequests if {@code true}, will include {@link PullRequest PullRequests} as well
      * @return optionally a List of IssueData or an empty Optional if an error occurred
      */
     public Optional<List<IssueData>> getIssues(boolean includePullRequests) {
-        return getJSONStringFromPath("/issues?state=all").map(json -> {
-            ArrayList<IssueData> data;
+        Optional<String> test = getJSONStringFromPath("/issues?state=all");
+        JsonParser parser = new JsonParser();
+        JsonElement jsonData;
+        if (test.isPresent())
+            jsonData = parser.parse(test.get());
+        else
+            return Optional.empty();
+
+        JsonArray array = jsonData.getAsJsonArray();
+        List<JsonElement> input = new ArrayList<>();
+        for (JsonElement jsonElement : array) {
+            input.add(jsonElement);
+        }
+        List<IssueData> results = Collections.synchronizedList(new ArrayList<>());
+
+        LOG.info("Starting to deserialize issues.");
+        input.parallelStream().forEach(json -> {
+            IssueData issue;
             try {
-                data = gson.fromJson(json, new TypeToken<ArrayList<IssueData>>() {}.getType());
+                issue = gson.fromJson(json, new TypeToken<IssueData>() {
+                }.getType());
             } catch (JsonSyntaxException e) {
                 LOG.warning("Encountered invalid JSON: " + json);
-                return null;
+                issue = null;
             }
-
-            if (data != null && !includePullRequests) {
-                return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
+            synchronized (results) {
+                results.add(issue);
             }
-            return data;
         });
+        LOG.info("Finished issue deserialization.");
+        if (results.contains(null)) {
+            return Optional.empty();
+        } else {
+            if (!includePullRequests)
+                return Optional.of(results.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList()));
+            return Optional.of(results);
+        }
+
+
+//        return getJSONStringFromPath("/issues?state=all").map(json -> {
+//            ArrayList<IssueData> data;
+//            try {
+//                data = gson.fromJson(json, new TypeToken<ArrayList<IssueData>>() {}.getType());
+//            } catch (JsonSyntaxException e) {
+//                LOG.warning("Encountered invalid JSON: " + json);
+//                return null;
+//            }
+//
+//            if (data != null && !includePullRequests) {
+//                return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
+//            }
+//            return data;
+//        });
     }
 
     /**
      * Returns a List of Events for an Issue.
      *
-     * @param issue
-     *         the parent IssueData
+     * @param issue the parent IssueData
      * @return optionally a List of EventData or an empty Optional if an error occurred
      */
     Optional<List<EventData>> getEvents(IssueData issue) {
         return getJSONStringFromPath("/issues/" + issue.number + "/events").map(json -> {
             try {
-                return gson.fromJson(json, new TypeToken<ArrayList<EventData>>() {}.getType());
+                return gson.fromJson(json, new TypeToken<ArrayList<EventData>>() {
+                }.getType());
             } catch (JsonSyntaxException e) {
                 LOG.warning("Encountered invalid JSON: " + json);
                 return null;
@@ -205,14 +235,14 @@ public class GitHubRepository extends Repository {
     /**
      * Returns a List of Comments for an Issue.
      *
-     * @param issue
-     *         the parent IssueData
+     * @param issue the parent IssueData
      * @return optionally a list of CommentData or an empty Optional if an error occurred
      */
     Optional<List<CommentData>> getComments(IssueData issue) {
         return getJSONStringFromPath("/issues/" + issue.number + "/comments?state=all").map(json -> {
             try {
-                return gson.fromJson(json, new TypeToken<ArrayList<CommentData>>() {}.getType());
+                return gson.fromJson(json, new TypeToken<ArrayList<CommentData>>() {
+                }.getType());
             } catch (JsonSyntaxException e) {
                 LOG.warning("Encountered invalid JSON: " + json);
                 return null;
@@ -223,8 +253,7 @@ public class GitHubRepository extends Repository {
     /**
      * Gets a List of all Commits before a given Date.
      *
-     * @param date
-     *         the Date until Commits are included
+     * @param date the Date until Commits are included
      * @return optionally a List of Commits or an empty Optional if the operation failed
      */
     public Optional<List<Commit>> getCommitsBeforeDate(Date date) {
@@ -234,10 +263,8 @@ public class GitHubRepository extends Repository {
     /**
      * Gets a List of all Commits before a given Date.
      *
-     * @param date
-     *         the Date until Commits are included
-     * @param branch
-     *         limit Commits to this specific branch
+     * @param date   the Date until Commits are included
+     * @param branch limit Commits to this specific branch
      * @return optionally a List of Commits or an empty Optional if the operation failed
      */
     public Optional<List<Commit>> getCommitsBeforeDate(Date date, String branch) {
@@ -247,10 +274,8 @@ public class GitHubRepository extends Repository {
     /**
      * Gets a list of merge commits between the two provided times.
      *
-     * @param start
-     *         the timestamp, after which the first commit is included
-     * @param end
-     *         the timestamp after the last included commit
+     * @param start the timestamp, after which the first commit is included
+     * @param end   the timestamp after the last included commit
      * @return optionally a List of Commits, or an empty Optional if an error occurred
      */
     public Optional<List<Commit>> getMergeCommitsBetween(Date start, Date end) {
@@ -260,10 +285,8 @@ public class GitHubRepository extends Repository {
     /**
      * Gets a list of merge commits reachable from {@code end} and in the history of {@code start}.
      *
-     * @param start
-     *         the first commit to include
-     * @param end
-     *         the last commit to include
+     * @param start the first commit to include
+     * @param end   the last commit to include
      * @return optionally a List of Commits, or an empty Optional if an error occurred
      */
     public Optional<List<Commit>> getMergeCommitsBetween(Commit start, Commit end) {
@@ -285,7 +308,8 @@ public class GitHubRepository extends Repository {
         getJSONStringFromPath("/pulls?state=all").ifPresent(json -> {
             ArrayList<PullRequestData> data;
             try {
-                data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() {}.getType());
+                data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() {
+                }.getType());
             } catch (JsonSyntaxException e) {
                 LOG.warning("Encountered invalid JSON: " + json);
                 return;
@@ -321,16 +345,17 @@ public class GitHubRepository extends Repository {
                 Optional<String> commitData = getJSONStringFromPath("/pulls/" + pr.number + "/commits");
                 //noinspection unchecked
                 List<Commit> commits = commitData.map(cd ->
-                        ((ArrayList<RefData>) gson.fromJson(cd, new TypeToken<ArrayList<RefData>>() {}.getType())).stream().map(c ->
+                        ((ArrayList<RefData>) gson.fromJson(cd, new TypeToken<ArrayList<RefData>>() {
+                        }.getType())).stream().map(c ->
                                 getCommit(c.sha).orElseGet(() -> {
                                     LOG.warning(String.format("Invalid commit %s from PR %d", c.sha, pr.number));
                                     return null;
                                 }))
-                            .filter(Objects::nonNull).collect(Collectors.toList()))
-                    .orElseGet(() -> {
-                        LOG.warning(String.format("Could not get commits for PR %d", pr.number));
-                        return Collections.emptyList();
-                    });
+                                .filter(Objects::nonNull).collect(Collectors.toList()))
+                        .orElseGet(() -> {
+                            LOG.warning(String.format("Could not get commits for PR %d", pr.number));
+                            return Collections.emptyList();
+                        });
 
                 if (pr.head.repo == null) {
                     LOG.warning(String.format("PR %d has no fork repo", pr.number));
@@ -345,14 +370,10 @@ public class GitHubRepository extends Repository {
     /**
      * Gets a List of all Commits before a given Date on a branch.
      *
-     * @param start
-     *         the Date since which Commits are included
-     * @param end
-     *         the Date until Commits are included
-     * @param branch
-     *         limit Commits to this specific branch
-     * @param onlyMerges
-     *         if {@code true} only merge Commits are included
+     * @param start      the Date since which Commits are included
+     * @param end        the Date until Commits are included
+     * @param branch     limit Commits to this specific branch
+     * @param onlyMerges if {@code true} only merge Commits are included
      * @return optionally a List of Commits or an empty optional if the operation failed
      */
     private Optional<List<Commit>> getCommitsInRange(Date start, Date end, String branch, boolean onlyMerges) {
@@ -383,8 +404,7 @@ public class GitHubRepository extends Repository {
      * Returns an InputStreamReader reading the JSON data returned from the GitHub API called with the API path on the
      * current repository.
      *
-     * @param path
-     *         the API path to call
+     * @param path the API path to call
      * @return an InputStreamReader on the result
      */
     private Optional<String> getJSONStringFromPath(String path) {
@@ -395,8 +415,7 @@ public class GitHubRepository extends Repository {
      * Returns an InputStreamReader reading the JSON data returned from the GitHub API called with the given URL.
      * The caller is responsible, that the URL matches this repository.
      *
-     * @param urlString
-     *         the URL to call
+     * @param urlString the URL to call
      * @return an InputStreamReader on the result
      */
     Optional<String> getJSONStringFromURL(String urlString) {
@@ -426,7 +445,10 @@ public class GitHubRepository extends Repository {
                     Map<String, List<String>> headers = Arrays.stream(resp.getAllHeaders())
                             .collect(Collectors.toMap(Header::getName,
                                     h -> new ArrayList<>(Collections.singletonList(h.getValue())),
-                                    (a, b) -> {a.addAll(b); return a;}));
+                                    (a, b) -> {
+                                        a.addAll(b);
+                                        return a;
+                                    }));
 
                     int rateLimitRemaining = Integer.parseInt(headers.getOrDefault("X-RateLimit-Remaining", Collections.singletonList("")).get(0));
                     Instant rateLimitReset = Instant.ofEpochMilli(Long.parseLong(headers.get("X-RateLimit-Reset").get(0)) * 1000);
@@ -434,6 +456,7 @@ public class GitHubRepository extends Repository {
 
                     // if the call failed, fetch a new token and try again.
                     if (!token.isUsable()) {
+                        LOG.info("Attempting to switch token.");
                         releaseToken(token);
                         optToken = getValidToken();
                         if (!optToken.isPresent()) {
@@ -441,6 +464,7 @@ public class GitHubRepository extends Repository {
                             return Optional.empty();
                         }
                         token = optToken.get();
+                        LOG.info("Token switch successful");
                         continue;
                     }
 
@@ -463,7 +487,7 @@ public class GitHubRepository extends Repository {
             }
 
             // concatenate all results together, making one large JSON string
-           json = String.join("", data).replace("][", ",");
+            json = String.join("", data).replace("][", ",");
 
         } catch (IOException e) {
             LOG.warning("Could not get data from GitHub.");
@@ -507,8 +531,7 @@ public class GitHubRepository extends Repository {
     /**
      * {@link Token#release() Releases} the Token and informs the next one waiting.
      *
-     * @param token
-     *         the Token to release
+     * @param token the Token to release
      */
     private void releaseToken(Token token) {
         token.release();
@@ -529,7 +552,7 @@ public class GitHubRepository extends Repository {
     public static Instant tokenResetTime() {
         synchronized (tokens) {
             if (tokens.stream().anyMatch(Token::isUsable)) return Instant.now();
-            if (tokens.stream().anyMatch(Token::isValid))  return Instant.now().plusSeconds(10);
+            if (tokens.stream().anyMatch(Token::isValid)) return Instant.now().plusSeconds(10);
             return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).get();
         }
     }
@@ -551,8 +574,7 @@ public class GitHubRepository extends Repository {
      * Default is {@code false}.
      * This is a global switch and takes immediate effect on all running and future requests.
      *
-     * @param sleepOnApiLimit
-     *         if {@code true}, all API calls will wait until the call blocked due to rate limiting succeeds again
+     * @param sleepOnApiLimit if {@code true}, all API calls will wait until the call blocked due to rate limiting succeeds again
      * @see #tokenResetTime()
      */
     public void sleepOnApiLimit(boolean sleepOnApiLimit) {
@@ -578,8 +600,7 @@ public class GitHubRepository extends Repository {
      * Default is {@code false}.
      * This is a global switch and takes immediate effect on all running and future requests.
      *
-     * @param guess
-     *         if {@code true}, guessing of user email is allowed
+     * @param guess if {@code true}, guessing of user email is allowed
      * @see #allowGuessing()
      */
     public void allowGuessing(boolean guess) {
@@ -610,8 +631,7 @@ public class GitHubRepository extends Repository {
      * This method provides a convenient way to convert GitHub-related objects back to their JSON representation
      * (For now only GitHub related data and commits can be serialized)
      *
-     * @param obj
-     *         the object to serialize
+     * @param obj the object to serialize
      * @return a String containing the JSON representation
      */
     public String serialize(Object obj) {
