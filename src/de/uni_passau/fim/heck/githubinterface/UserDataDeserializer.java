@@ -3,6 +3,7 @@ package de.uni_passau.fim.heck.githubinterface;
 import java.lang.reflect.Type;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import com.google.gson.JsonDeserializationContext;
@@ -22,6 +23,7 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
 
     private static Map<String, UserData> strictUsers = new ConcurrentHashMap<>();
     private static Map<String, UserData> guessedUsers = new ConcurrentHashMap<>();
+    private static final List<String> currentUsers = Collections.synchronizedList(new ArrayList<>());
     private final GitHubRepository repo;
 
     UserDataDeserializer(GitHubRepository repo) {
@@ -34,12 +36,32 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
 
         Map<String, UserData> lookupList = repo.allowGuessing() ? guessedUsers : strictUsers;
 
-        if (lookupList.containsKey(username)) return lookupList.get(username);
+        if (lookupList.containsKey(username)) {
+            return lookupList.get(username);
+        }
+
+        synchronized (currentUsers) {
+            if (currentUsers.contains(username)) {
+                while (!lookupList.containsKey(username)) {
+                    try {
+                        TimeUnit.MILLISECONDS.sleep(200);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                return lookupList.get(username);
+            }
+            currentUsers.add(username);
+        }
+
 
         UserData user = new UserData();
         user.username = username;
         insertNameAndMail(json, user);
         lookupList.put(username, user);
+        synchronized (currentUsers) {
+            currentUsers.remove(username);
+        }
         return user;
     }
 
@@ -71,6 +93,7 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
             user.email = "";
             return;
         }
+        System.out.println("Starting lookup for user" + user.username);
 
         // get list of recent pushes
         Optional<String> eventsData = repo.getJSONStringFromURL(json.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));
@@ -93,12 +116,13 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
         });
         if (emails.isEmpty()) {
             user.email = "";
+            System.out.println("No mail found for " + user.username);
             return;
         }
         Map<String, Long> counts = emails.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
 
         // get email with most entries
         user.email = Collections.max(counts.entrySet(), Comparator.comparingLong(Map.Entry::getValue)).getKey();
-        System.out.println("Success: " + user.email);
+        System.out.println("Success for user " + user.username + "with mail: " + user.email);
     }
 }

@@ -32,8 +32,7 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
     /**
      * Creates a new IssueDataPostprocessor for handling Issues specific to the provided GitHubRepository.
      *
-     * @param repo
-     *         the repository
+     * @param repo the repository
      */
     IssueDataPostprocessor(GitHubRepository repo) {
         this.repo = repo;
@@ -89,8 +88,7 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
     /**
      * Extracts theoretically valid commit hashes form text.
      *
-     * @param text
-     *         the text to analyze
+     * @param text the text to analyze
      * @return a List of all valid hashes
      */
     private List<String> extractSHA1s(String text) {
@@ -110,5 +108,6 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
     }
 
     @Override
-    public void postSerialize(JsonElement result, IssueData src, Gson gson) { }
+    public void postSerialize(JsonElement result, IssueData src, Gson gson) {
+    }
 }

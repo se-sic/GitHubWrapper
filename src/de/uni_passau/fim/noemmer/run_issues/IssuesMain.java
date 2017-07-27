@@ -44,7 +44,12 @@ public class IssuesMain {
         GitHubRepository repo;
         Optional<Repository> optRepo = git.importRepository(new File(repoPath));
         if (optRepo.isPresent()) {
-            repo = new GitHubRepository(optRepo.get(), git, "020755268f1246109600b9c62d10d2ba0df37ee0");
+            List<String> tokens = new ArrayList<>();
+            tokens.add("020755268f1246109600b9c62d10d2ba0df37ee0");
+            tokens.add("747aab46b5b6b973a4f1ebc87d2706d1f14b23f7");
+            tokens.add("892a4138acd9134d20aac1b8850ab823369849c7");
+            repo = new GitHubRepository(optRepo.get(), git, tokens);
+            repo.sleepOnApiLimit(true);
         } else {
             System.out.println("Cloning failed");
             return;
@@ -93,7 +98,7 @@ public class IssuesMain {
 
         if (json.has("eventsList"))
             ((JsonArray) json.get("eventsList")).forEach(j ->
-                        removeExcess((JsonObject) j));
+                    removeExcess((JsonObject) j));
 
         if (json.has("relatedCommits"))
             ((JsonArray) json.get("relatedCommits")).forEach(commit -> {

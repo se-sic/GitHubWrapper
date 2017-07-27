@@ -1,56 +1,31 @@
 package de.uni_passau.fim.heck.githubinterface;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.lang.reflect.Array;
-import java.nio.file.Path;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Queue;
-import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
-import java.util.logging.Logger;
-import java.util.stream.Collectors;
-
 import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.RefData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.State;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.UserData;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.*;
 import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
-import de.uni_passau.fim.seibt.gitwrapper.repo.BlameLine;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Branch;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
-import de.uni_passau.fim.seibt.gitwrapper.repo.GitWrapper;
-import de.uni_passau.fim.seibt.gitwrapper.repo.MergeConflict;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Reference;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Repository;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Status;
+import de.uni_passau.fim.seibt.gitwrapper.repo.*;
 import io.gsonfire.GsonFireBuilder;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.HttpClients;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.file.Path;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 /**
  * A GitHubRepository wraps a (local) Repository to give access to the GitHub API to provide {@link PullRequestData} and
@@ -60,7 +35,7 @@ public class GitHubRepository extends Repository {
 
     private static final Logger LOG = Logger.getLogger(GitHubRepository.class.getCanonicalName());
 
-    private static final Set<Token> tokens = new HashSet<>();
+    private static final List<Token> tokens = new ArrayList<>();
     private static final Queue<Thread> tokenWaitList = new ConcurrentLinkedQueue<>();
 
     private final GitWrapper git;
@@ -173,7 +148,7 @@ public class GitHubRepository extends Repository {
             input.add(jsonElement);
         }
         List<IssueData> results = Collections.synchronizedList(new ArrayList<>());
-
+        System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", Integer.toString(tokens.size() - 1));
         LOG.info("Starting to deserialize issues.");
         input.parallelStream().forEach(json -> {
             IssueData issue;
@@ -188,6 +163,8 @@ public class GitHubRepository extends Repository {
                 results.add(issue);
             }
         });
+
+
         LOG.info("Finished issue deserialization.");
         if (results.contains(null)) {
             return Optional.empty();
@@ -483,7 +460,8 @@ public class GitHubRepository extends Repository {
                 } while (true);
 
             } finally {
-                if (token != null) releaseToken(token);
+                if (token != null)
+                    releaseToken(token);
             }
 
             // concatenate all results together, making one large JSON string
@@ -508,9 +486,11 @@ public class GitHubRepository extends Repository {
      * @see #sleepOnApiLimit(boolean)
      * @see #releaseToken(Token)
      */
-    private Optional<Token> getValidToken() {
+    private synchronized Optional<Token> getValidToken() {
         synchronized (tokens) {
-            Optional<Token> optToken = tokens.stream().filter(Token::isValid).filter(Token::acquire).findFirst();
+
+            Optional<Token> optToken = tokens.stream().filter(Token::isUsable).findAny();
+
             if (sleepOnApiLimit() && !optToken.isPresent()) {
                 try {
                     LOG.info(String.format("Waiting until %s before the next token is available.", tokenResetTime()));
@@ -522,6 +502,7 @@ public class GitHubRepository extends Repository {
                 return getValidToken();
             }
             if (optToken.isPresent()) {
+                optToken.get().acquire();
                 LOG.fine(Thread.currentThread() + " acquired token " + tokens);
             }
             return optToken;
@@ -551,8 +532,11 @@ public class GitHubRepository extends Repository {
      */
     public static Instant tokenResetTime() {
         synchronized (tokens) {
-            if (tokens.stream().anyMatch(Token::isUsable)) return Instant.now();
-            if (tokens.stream().anyMatch(Token::isValid)) return Instant.now().plusSeconds(10);
+            if (tokens.stream().anyMatch(Token::isUsable))
+                return Instant.now();
+            if (tokens.stream().anyMatch(Token::isValid))
+                return Instant.now().plusSeconds(10);
+
             return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).get();
         }
     }

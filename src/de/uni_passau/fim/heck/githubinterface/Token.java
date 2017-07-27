@@ -79,7 +79,7 @@ public class Token {
      * @return {@code true}, if one call can be made, or the token can be reset
      */
     boolean isValid() {
-        return calls > 0 || Instant.now().isAfter(resetTime);
+        return calls > 5 || Instant.now().isAfter(resetTime);
     }
 
     /**
