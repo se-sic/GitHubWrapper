@@ -124,7 +124,7 @@ public class IssuesMain {
                     userId = new JsonPrimitive(buffer.get(user.get("username").getAsString()));
                 } else {
                     userId = new JsonPrimitive(getPerson(user.get("username").getAsString(), user.get("email").getAsString(),
-                            user.get("name") != null ? user.get("name").getAsString() : null));
+                            !(user.get("name") instanceof JsonNull) ? user.get("name").getAsString() : null));
                     buffer.put(user.get("username").getAsString(), userId.getAsLong());
                 }
                 user.add("userId", userId);

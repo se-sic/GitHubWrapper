@@ -108,6 +108,8 @@ public class GitHubRepository extends Repository {
         gb.registerTypeAdapter(Commit.class, new CommitSerializer());
         gb.registerTypeAdapter(UserData.class, new UserDataDeserializer(this));
         gb.registerTypeAdapter(EventData.class, new EventDataDeserializer());
+        gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
+        gb.serializeNulls();
         gson = gb.create();
 
         hc = HttpClients.createDefault();
