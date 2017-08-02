@@ -66,18 +66,23 @@ public class IssuesMain {
             StringBuilder issueString = new StringBuilder();
             for (JsonElement event : issueJson.get("eventsList").getAsJsonArray()) {
                 JsonObject eventObject = event.getAsJsonObject();
-                for (Map.Entry<String, JsonElement> key : issueJson.entrySet()) {
-                    if (!key.getKey().equals("eventsList")) {
-                        issueString.append(key.getValue());
-                        issueString.append(';');
-                    }
+                if(!(eventObject.get("user") instanceof JsonNull)) {
+                    //Add issue Data
+                    issueString.append(issueJson.get("number")).append(';');
+                    issueString.append(issueJson.get("state")).append(';');
+                    issueString.append(issueJson.get("created_at")).append(';');
+                    issueString.append(issueJson.get("closed_at")).append(';');
+                    issueString.append(issueJson.get("isPullRequest")).append(';');
+
+                    //Add event data
+                    issueString.append(eventObject.get("user")).append(';');
+                    issueString.append(eventObject.get("username")).append(';');
+                    issueString.append(eventObject.get("usermail")).append(';');
+                    issueString.append(eventObject.get("created_at")).append(';');
+                    issueString.append(eventObject.get("event"));
+
+                    issueString.append("\n");
                 }
-                for (Map.Entry<String, JsonElement> key : eventObject.entrySet()) {
-                    issueString.append(key.getValue());
-                    issueString.append(';');
-                }
-                issueString.deleteCharAt(issueString.length() - 1);
-                issueString.append("\n");
             }
             issues.append(issueString);
         }));
@@ -98,8 +103,8 @@ public class IssuesMain {
             JsonElement authorName = json.get("user").getAsJsonObject().get("name");
             JsonElement authorMail = json.get("user").getAsJsonObject().get("email");
             json.add("user", buffer);
-            json.add("authorName", authorName);
-            json.add("authorMail", authorMail);
+            json.add("username", authorName);
+            json.add("usermail", authorMail);
         }
 
         if (json.has("title"))
@@ -130,6 +135,8 @@ public class IssuesMain {
         if (json.has("commentsList") && json.has("eventsList")) {
             JsonObject createdEvent = new JsonObject();
             createdEvent.add("user", json.get("user"));
+            createdEvent.add("username", json.get("username"));
+            createdEvent.add("usermail", json.get("usermail"));
             createdEvent.add("created_at", json.get("created_at"));
             createdEvent.addProperty("event", "created");
             json.get("eventsList").getAsJsonArray().add(createdEvent);
