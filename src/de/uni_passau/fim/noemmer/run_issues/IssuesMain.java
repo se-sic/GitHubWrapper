@@ -58,16 +58,32 @@ public class IssuesMain {
         repo.allowGuessing(true);
         System.out.println("Starting to build Json.");
         JsonParser parser = new JsonParser();
-        JsonArray issues = new JsonArray();
+        StringBuilder issues = new StringBuilder("");
         repo.getIssues(true).ifPresent(issueData -> issueData.forEach(issue -> {
-            JsonObject issueJson = parser.parse(repo.serialize(issue)).getAsJsonObject();
+            JsonObject issueJson = (parser.parse(repo.serialize(issue))).getAsJsonObject();
             insertUserIds(issueJson);
             removeExcess(issueJson);
-            issues.add(issueJson);
+            StringBuilder issueString = new StringBuilder();
+            for (JsonElement event : issueJson.get("eventsList").getAsJsonArray()) {
+                JsonObject eventObject = event.getAsJsonObject();
+                for (Map.Entry<String, JsonElement> key : issueJson.entrySet()) {
+                    if (!key.getKey().equals("eventsList")) {
+                        issueString.append(key.getValue());
+                        issueString.append(';');
+                    }
+                }
+                for (Map.Entry<String, JsonElement> key : eventObject.entrySet()) {
+                    issueString.append(key.getValue());
+                    issueString.append(';');
+                }
+                issueString.deleteCharAt(issueString.length() - 1);
+                issueString.append("\n");
+            }
+            issues.append(issueString);
         }));
 
         try {
-            PrintWriter out = new PrintWriter(resdir + "/issues.json", "UTF-8");
+            PrintWriter out = new PrintWriter(resdir + "/issues.list", "UTF-8");
             out.print(issues);
             out.flush();
             out.close();
@@ -97,22 +113,27 @@ public class IssuesMain {
 
         if (json.has("commentsList"))
             ((JsonArray) json.get("commentsList")).forEach(j -> {
-                removeExcess((JsonObject) j);
-                ((JsonObject) j).addProperty("event", "commented");
+                removeExcess(j.getAsJsonObject());
+                (j.getAsJsonObject()).addProperty("event", "commented");
             });
 
         if (json.has("eventsList"))
             ((JsonArray) json.get("eventsList")).forEach(j ->
-                    removeExcess((JsonObject) j));
+                    removeExcess(j.getAsJsonObject()));
 
         if (json.has("relatedCommits"))
             ((JsonArray) json.get("relatedCommits")).forEach(commit -> {
-                ((JsonObject) commit).remove("time");
-                ((JsonObject) commit).remove("author");
+                (commit.getAsJsonObject()).remove("time");
+                (commit.getAsJsonObject()).remove("author");
             });
 
         if (json.has("commentsList") && json.has("eventsList")) {
-            ((JsonArray) json.get("eventsList")).addAll((JsonArray) json.get("commentsList"));
+            JsonObject createdEvent = new JsonObject();
+            createdEvent.add("user", json.get("user"));
+            createdEvent.add("created_at", json.get("created_at"));
+            createdEvent.addProperty("event", "created");
+            json.get("eventsList").getAsJsonArray().add(createdEvent);
+            json.get("eventsList").getAsJsonArray().addAll(json.get("commentsList").getAsJsonArray());
             json.remove("commentsList");
         }
     }
