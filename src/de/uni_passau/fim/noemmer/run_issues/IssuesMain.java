@@ -9,6 +9,7 @@ import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.message.BasicNameValuePair;
@@ -23,7 +24,7 @@ public class IssuesMain {
 
     private static long projectId;
     private static String idServiceUrl;
-    private static HashMap<String, Long> buffer = new HashMap<>();
+    private static HashMap<String, JsonObject> buffer = new HashMap<>();
 
     public static void main(String args[]) {
         GitWrapper git;
@@ -77,8 +78,12 @@ public class IssuesMain {
 
     private static void removeExcess(JsonObject json) {
         if (json.has("user") && json.get("user") instanceof JsonObject) {
-            JsonElement buffer = ((JsonObject) json.get("user")).get("userId");
+            JsonElement buffer = json.get("user").getAsJsonObject().get("userId");
+            JsonElement authorName = json.get("user").getAsJsonObject().get("name");
+            JsonElement authorMail = json.get("user").getAsJsonObject().get("email");
             json.add("user", buffer);
+            json.add("authorName", authorName);
+            json.add("authorMail", authorMail);
         }
 
         if (json.has("title"))
@@ -124,57 +129,64 @@ public class IssuesMain {
             }
             if (entry.getKey().equals("user") && entry.getValue() instanceof JsonObject) {
                 JsonObject user = (JsonObject) entry.getValue();
-                JsonPrimitive userId;
-                System.out.println(user.toString());
+                JsonObject idServiceUser;
                 if (buffer.containsKey(user.get("username").getAsString())) {
-                    userId = new JsonPrimitive(buffer.get(user.get("username").getAsString()));
+                    idServiceUser = buffer.get(user.get("username").getAsString());
                 } else {
-                    userId = new JsonPrimitive(getPerson(user.get("username").getAsString(), user.get("email").getAsString(),
-                            !(user.get("name") instanceof JsonNull) ? user.get("name").getAsString() : null));
-                    buffer.put(user.get("username").getAsString(), userId.getAsLong());
+                    idServiceUser = getPerson(user.get("username").getAsString(), user.get("email").getAsString(),
+                            !(user.get("name") instanceof JsonNull) ? user.get("name").getAsString() : null);
+                    buffer.put(user.get("username").getAsString(), idServiceUser);
                 }
-                user.add("userId", userId);
+                user.add("userId", idServiceUser.get("id"));
+                user.add("name", idServiceUser.get("name"));
+                user.add("email", idServiceUser.get("email1"));
             }
         }
     }
 
 
-    private static long getPerson(String username, String email, String name) {
-        long userId = 0;
+    private static JsonObject getPerson(String username, String email, String name) {
+        JsonObject user = new JsonObject();
         HttpClient client = HttpClientBuilder.create().build();
         HttpPost post = new HttpPost("http://" + idServiceUrl + "/post_user_id");
+        JsonParser parser = new JsonParser();
         try {
-            HttpResponse response = getHttpResponse(name == null ? username : name, email, client, post);
-            BufferedReader rd = new BufferedReader(new InputStreamReader(
-                    response.getEntity().getContent()));
+            HttpResponse response = getHttpResponseId(name == null ? username : name, email, client, post);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent()));
             StringBuilder builder = new StringBuilder();
             String line;
-            while ((line = rd.readLine()) != null) {
+            while ((line = reader.readLine()) != null) {
                 builder.append(line);
             }
-            rd.close();
+            reader.close();
             if (builder.toString().contains("error")) {
-                response = getHttpResponse(name == null ? username : name, username + "@default.com", client, post);
-                rd = new BufferedReader(new InputStreamReader(response.getEntity().getContent()));
+                response = getHttpResponseId(name == null ? username : name, username + "@default.com", client, post);
+                reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent()));
                 builder = new StringBuilder();
-                while ((line = rd.readLine()) != null) {
+                while ((line = reader.readLine()) != null) {
                     builder.append(line);
                 }
-                rd.close();
+                reader.close();
             }
-            JsonParser parser = new JsonParser();
-            System.out.println(builder.toString());
-            JsonObject json = parser.parse(builder.toString()).getAsJsonObject();
-            userId = json.get("id").getAsLong();
-            System.out.println(userId);
-            return userId;
+            user = parser.parse(builder.toString()).getAsJsonObject();
+            HttpGet get = new HttpGet("http://" + idServiceUrl + "/getUser/" + user.get("id"));
+            response = client.execute(get);
+            reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent()));
+            builder = new StringBuilder();
+            while ((line = reader.readLine()) != null) {
+                builder.append(line);
+            }
+            reader.close();
+            System.out.println("Found User " + builder.toString());
+            user = parser.parse(builder.toString()).getAsJsonArray().get(0).getAsJsonObject();
+
         } catch (IOException e) {
             e.printStackTrace();
         }
-        return userId;
+        return user;
     }
 
-    private static HttpResponse getHttpResponse(String username, String email, HttpClient client, HttpPost post) throws IOException {
+    private static HttpResponse getHttpResponseId(String username, String email, HttpClient client, HttpPost post) throws IOException {
         List<NameValuePair> nameValuePairs = new ArrayList<>(1);
         nameValuePairs.add(new BasicNameValuePair("projectID", Long.toString(projectId)));
         nameValuePairs.add(new BasicNameValuePair("name", username));
@@ -182,4 +194,5 @@ public class IssuesMain {
         post.setEntity(new UrlEncodedFormEntity(nameValuePairs, "UTF-8"));
         return client.execute(post);
     }
+
 }
