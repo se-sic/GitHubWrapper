@@ -93,7 +93,6 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
             user.email = "";
             return;
         }
-        System.out.println("Starting lookup for user" + user.username);
 
         // get list of recent pushes
         Optional<String> eventsData = repo.getJSONStringFromURL(json.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));
@@ -116,13 +115,11 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
         });
         if (emails.isEmpty()) {
             user.email = "";
-            System.out.println("No mail found for " + user.username);
             return;
         }
         Map<String, Long> counts = emails.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
 
         // get email with most entries
         user.email = Collections.max(counts.entrySet(), Comparator.comparingLong(Map.Entry::getValue)).getKey();
-        System.out.println("Success for user " + user.username + "with mail: " + user.email);
     }
 }

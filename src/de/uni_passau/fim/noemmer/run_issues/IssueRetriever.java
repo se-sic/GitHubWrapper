@@ -40,17 +40,14 @@ public class IssueRetriever {
         Optional<Repository> optRepo = git.importRepository(new File(repoPath));
         if (optRepo.isPresent()) {
             List<String> tokens = new ArrayList<>();
-            tokens.add("020755268f1246109600b9c62d10d2ba0df37ee0");
-            tokens.add("747aab46b5b6b973a4f1ebc87d2706d1f14b23f7");
-            tokens.add("892a4138acd9134d20aac1b8850ab823369849c7");
-            tokens.add("125bc6ec4fdf0eb03eafc7c37e9a46e4b8cc665c");
+
             repo = new GitHubRepository(optRepo.get(), git, tokens);
             repo.sleepOnApiLimit(true);
+            repo.allowGuessing(true);
         } else {
             System.out.println("Cloning failed");
             return;
         }
-        repo.allowGuessing(true);
         System.out.println("Starting to build Json.");
 
 
@@ -62,10 +59,10 @@ public class IssueRetriever {
             PrintWriter out = new PrintWriter(resdir + "/issues.json", "UTF-8");
             out.print("[");
             StringBuilder sb = new StringBuilder();
-            repo.getIssues(true).ifPresent(issueData -> issueData.forEach(issue -> {
+            repo.getIssues(true).forEach(issue -> {
                 sb.append(repo.serialize(issue));
                 sb.append(',');
-            }));
+            });
             sb.deleteCharAt(sb.length() - 1);
             out.print(sb);
             out.print("]");

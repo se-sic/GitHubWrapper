@@ -2,21 +2,24 @@ package de.uni_passau.fim.heck.githubinterface;
 
 import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonWriter;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.*;
 import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
 import de.uni_passau.fim.seibt.gitwrapper.repo.*;
 import io.gsonfire.GsonFireBuilder;
+import jdk.nashorn.internal.ir.debug.JSONWriter;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.HttpClients;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import javax.annotation.concurrent.ThreadSafe;
+import java.io.*;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
@@ -37,6 +40,7 @@ public class GitHubRepository extends Repository {
 
     private static final List<Token> tokens = new ArrayList<>();
     private static final Queue<Thread> tokenWaitList = new ConcurrentLinkedQueue<>();
+    private int testID = 0;
 
     private final GitWrapper git;
     private final Repository repo;
@@ -45,33 +49,9 @@ public class GitHubRepository extends Repository {
 
     private final String apiBaseURL;
     private final File dir;
-    private List<PullRequest> pullRequests;
 
     private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
     private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(false);
-
-    /**
-     * Create a wrapper around a (local) repository with additional information about GitHub hosted repositories.
-     *
-     * @param repo the local Repository
-     * @param git  the GitWrapper instance to use
-     */
-    public GitHubRepository(Repository repo, GitWrapper git) {
-        this(repo, git, "");
-    }
-
-    /**
-     * Create a wrapper around a (local) Repository with additional information about GitHub hosted repositories.
-     *
-     * @param repo       the local repository
-     * @param git        the GitWrapper instance to use
-     * @param oauthToken a valid oAuth token for GitHub
-     *                   (see  <a href="https://github.com/settings/tokens">https://github.com/settings/tokens</a>) for
-     *                   information about creating such tokens)
-     */
-    public GitHubRepository(Repository repo, GitWrapper git, String oauthToken) {
-        this(repo, git, Collections.singletonList(oauthToken));
-    }
 
     /**
      * Create a wrapper around a (local) Repository with additional information about GitHub hosted repositories.
@@ -113,82 +93,106 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Gets a List of PullRequests.
-     *
-     * @param filter The state of the PullRequests to include (see {@link State#includes(State, State)})
-     * @return optionally a List of PullRequests or an empty Optional, if an error occurred
-     */
-    public Optional<List<PullRequest>> getPullRequests(State filter) {
-        getPullRequests();
-        if (pullRequests == null) {
-            LOG.warning("Could not get PRs.");
-            return Optional.empty();
-        }
-        return Optional.of(pullRequests.stream().filter(pr -> State.includes(pr.getState(), filter)).collect(Collectors.toList()));
-    }
-
-    /**
      * Gets a List of Issues.
      *
      * @param includePullRequests if {@code true}, will include {@link PullRequest PullRequests} as well
      * @return optionally a List of IssueData or an empty Optional if an error occurred
      */
-    public Optional<List<IssueData>> getIssues(boolean includePullRequests) {
-        Optional<String> test = getJSONStringFromPath("/issues?state=all");
+    public JsonArray getIssues(boolean includePullRequests) {
         JsonParser parser = new JsonParser();
+        String cachePath = "./cache_" + repo.getName() + ".json";
+
+        List<Integer> cachedIds = new ArrayList<>();
+
+        PrintWriter cacheWriter = null;
+        try {
+            FileWriter fw = new FileWriter(cachePath, true);
+            BufferedWriter bw = new BufferedWriter(fw);
+            cacheWriter = new PrintWriter(bw);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        byte[] cache;
+        String cacheText = "";
+        try {
+            cache = Files.readAllBytes(Paths.get(cachePath));
+            cacheText = new String(cache, "UTF-8");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        String[] cachedIssues = cacheText.split("\n");
+        String cacheArrayString = Arrays.toString(cachedIssues);
+        System.out.println(cacheArrayString.length());
+        JsonArray cachedArray = (JsonArray) parser.parse(cacheArrayString);
+        for(JsonElement iss : cachedArray) {
+            JsonObject issobj = iss.getAsJsonObject();
+            cachedIds.add(issobj.get("number").getAsInt());
+        }
+        Optional<String> test = getJSONStringFromPath("/issues?state=all");
+
         JsonElement jsonData;
         if (test.isPresent())
             jsonData = parser.parse(test.get());
         else
-            return Optional.empty();
+            return null;
 
         JsonArray array = jsonData.getAsJsonArray();
         List<JsonElement> input = new ArrayList<>();
         for (JsonElement jsonElement : array) {
             input.add(jsonElement);
         }
-        List<IssueData> results = Collections.synchronizedList(new ArrayList<>());
+
         System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", Integer.toString(tokens.size() - 1));
         LOG.info("Starting to deserialize issues.");
+        PrintWriter finalCacheWriter = cacheWriter;
         input.parallelStream().forEach(json -> {
-            IssueData issue;
+            getID();
             try {
-                issue = gson.fromJson(json, new TypeToken<IssueData>() {
-                }.getType());
-            } catch (JsonSyntaxException e) {
-                LOG.warning("Encountered invalid JSON: " + json);
-                issue = null;
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
-            synchronized (results) {
-                results.add(issue);
-            }
-        });
 
+            if(!cachedIds.contains(json.getAsJsonObject().get("number").getAsInt())) {
+                IssueData issue;
+                try {
+                    issue = gson.fromJson(json, new TypeToken<IssueData>() {
+                    }.getType());
+                } catch (JsonSyntaxException e) {
+                    LOG.warning("Encountered invalid JSON: " + json);
+                    issue = null;
+                }
+                System.out.println("Thread " + Thread.currentThread().getName() + "(" + Thread.currentThread().getId() + ") deserrialized issue number " + (issue != null ? issue.number : 0));
+                synchronized (finalCacheWriter) {
+                    finalCacheWriter.println(serialize(issue));
+                }
+            } else
+                System.out.println("Issue is cached");
+        });
+        finalCacheWriter.close();
 
         LOG.info("Finished issue deserialization.");
-        if (results.contains(null)) {
-            return Optional.empty();
-        } else {
-            if (!includePullRequests)
-                return Optional.of(results.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList()));
-            return Optional.of(results);
+
+        byte[] encoded;
+        String text = "empty";
+        try {
+            encoded = Files.readAllBytes(Paths.get(cachePath));
+            text = new String(encoded, "UTF-8");
+        } catch (IOException e) {
+            e.printStackTrace();
         }
+        String[] items = text.split("\n");
+        String jsonArrayString = Arrays.toString(items);
 
+        return (JsonArray) parser.parse(jsonArrayString);
+    }
 
-//        return getJSONStringFromPath("/issues?state=all").map(json -> {
-//            ArrayList<IssueData> data;
-//            try {
-//                data = gson.fromJson(json, new TypeToken<ArrayList<IssueData>>() {}.getType());
-//            } catch (JsonSyntaxException e) {
-//                LOG.warning("Encountered invalid JSON: " + json);
-//                return null;
-//            }
-//
-//            if (data != null && !includePullRequests) {
-//                return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
-//            }
-//            return data;
-//        });
+    private synchronized void getID() {
+        if(testID < tokens.size()) {
+            Thread.currentThread().setName(String.valueOf(testID));
+            testID++;
+        }
     }
 
     /**
@@ -230,118 +234,12 @@ public class GitHubRepository extends Repository {
     /**
      * Gets a List of all Commits before a given Date.
      *
-     * @param date the Date until Commits are included
-     * @return optionally a List of Commits or an empty Optional if the operation failed
-     */
-    public Optional<List<Commit>> getCommitsBeforeDate(Date date) {
-        return getCommitsInRange(null, date, "*", false);
-    }
-
-    /**
-     * Gets a List of all Commits before a given Date.
-     *
      * @param date   the Date until Commits are included
      * @param branch limit Commits to this specific branch
      * @return optionally a List of Commits or an empty Optional if the operation failed
      */
     public Optional<List<Commit>> getCommitsBeforeDate(Date date, String branch) {
         return getCommitsInRange(null, date, branch, false);
-    }
-
-    /**
-     * Gets a list of merge commits between the two provided times.
-     *
-     * @param start the timestamp, after which the first commit is included
-     * @param end   the timestamp after the last included commit
-     * @return optionally a List of Commits, or an empty Optional if an error occurred
-     */
-    public Optional<List<Commit>> getMergeCommitsBetween(Date start, Date end) {
-        return getCommitsInRange(start, end, "*", true);
-    }
-
-    /**
-     * Gets a list of merge commits reachable from {@code end} and in the history of {@code start}.
-     *
-     * @param start the first commit to include
-     * @param end   the last commit to include
-     * @return optionally a List of Commits, or an empty Optional if an error occurred
-     */
-    public Optional<List<Commit>> getMergeCommitsBetween(Commit start, Commit end) {
-        return getMergeCommits().map(list -> list.stream()
-                .filter(c -> start == null || c.equals(start) || c.checkAncestry(start).orElse(false))
-                .filter(c -> end == null || c.equals(end) || end.checkAncestry(c).orElse(true))
-                .collect(Collectors.toList()));
-    }
-
-    /**
-     * Gets the list of pull requests from GitHub, if it is not already cached.
-     */
-    private void getPullRequests() {
-        if (pullRequests != null) {
-            LOG.fine("Using cached list of PRs");
-            return;
-        }
-        LOG.fine("Building new list of PRs");
-        getJSONStringFromPath("/pulls?state=all").ifPresent(json -> {
-            ArrayList<PullRequestData> data;
-            try {
-                data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() {
-                }.getType());
-            } catch (JsonSyntaxException e) {
-                LOG.warning("Encountered invalid JSON: " + json);
-                return;
-            }
-            pullRequests = new ArrayList<>(data.stream().map(pr -> {
-                State state = State.getPRState(pr.state, pr.merged_at != null);
-
-                // if the fork was deleted and the PR was rejected or is still open, we cannot get verify the
-                // commits, so the PR is dropped
-                if (pr.head.repo == null && (state == State.DECLINED || state == State.OPEN)) {
-                    LOG.warning(String.format("PR %d has no fork repo and was not merged, therefore it was dropped!", pr.number));
-                    return null;
-                }
-
-                // if the source branch on the fork was deleted and the PR was declined we also cannot get verify
-                // the commits, so the PR is dropped as well
-                if (pr.head.repo != null &&
-                        !addRemote(pr.head.repo.full_name, pr.head.repo.clone_url) &&
-                        !getBranch(pr.head.repo.full_name + "/" + pr.head.ref).isPresent()) {
-                    LOG.warning(String.format("The source branch of PR %d was deleted and the PR was not merged, therefore it was dropped!", pr.number));
-                    return null;
-                }
-
-                // we still can't find the tip, this probably means the history was rewritten and the refs are invalid
-                // nothing we can do but drop the PR
-                if (!repo.getCommit(pr.head.sha).isPresent()) {
-                    LOG.warning(String.format("The history of the repo does not include the merged PR %d, therefore it was dropped!", pr.number));
-                    return null;
-                }
-
-                Reference target = repo.getBranch("origin/" + pr.base.ref).orElse(null);
-
-                Optional<String> commitData = getJSONStringFromPath("/pulls/" + pr.number + "/commits");
-                //noinspection unchecked
-                List<Commit> commits = commitData.map(cd ->
-                        ((ArrayList<RefData>) gson.fromJson(cd, new TypeToken<ArrayList<RefData>>() {
-                        }.getType())).stream().map(c ->
-                                getCommit(c.sha).orElseGet(() -> {
-                                    LOG.warning(String.format("Invalid commit %s from PR %d", c.sha, pr.number));
-                                    return null;
-                                }))
-                                .filter(Objects::nonNull).collect(Collectors.toList()))
-                        .orElseGet(() -> {
-                            LOG.warning(String.format("Could not get commits for PR %d", pr.number));
-                            return Collections.emptyList();
-                        });
-
-                if (pr.head.repo == null) {
-                    LOG.warning(String.format("PR %d has no fork repo", pr.number));
-                    return new PullRequest(this, target, commits, pr);
-                }
-                return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, state, target, commits, pr);
-
-            }).filter(Objects::nonNull).collect(Collectors.toList()));
-        });
     }
 
     /**
@@ -398,24 +296,31 @@ public class GitHubRepository extends Repository {
     Optional<String> getJSONStringFromURL(String urlString) {
         String json;
         LOG.fine(String.format("Getting json from %s", urlString));
+        Token token;
+        if (Thread.activeCount() > 1) {
+            System.out.println(Thread.currentThread().getName());
+            token = tokens.get(Integer.valueOf(Thread.currentThread().getName()));
+        } else
+            token = getValidToken().get();
+
+        if(!token.isUsable()) {
+            LOG.info("Token has run out of attemts, " + "Thread " + Thread.currentThread() + " waiting 60 mins.");
+            try {
+                Thread.sleep(3600000);
+            } catch (InterruptedException e) {
+                LOG.warning("Thread " + Thread.currentThread() + " was unexpectedly woken up.");
+            }
+            LOG.info("Thread " + Thread.currentThread() + " is continuing work after sleep");
+        }
         try {
             List<String> data = new ArrayList<>();
             String url = urlString + (urlString.contains("?") ? "&" : "?") + "per_page=100";
-
-            Token token = null;
             try {
-                Optional<Token> optToken = getValidToken();
-                if (!optToken.isPresent()) {
-                    LOG.warning("No token available");
-                    return Optional.empty();
-                }
-                token = optToken.get();
-
                 do {
                     HttpResponse resp = hc.execute(new HttpGet(url + (token.getToken().isEmpty() ? "" : "&access_token=" + token.getToken())));
-
                     if (resp.getStatusLine().getStatusCode() != 200) {
                         LOG.warning(String.format("Could not access api method: %s returned %s", url, resp.getStatusLine()));
+                        resp.getEntity().getContent().close();
                         return Optional.empty();
                     }
 
@@ -426,28 +331,18 @@ public class GitHubRepository extends Repository {
                                         a.addAll(b);
                                         return a;
                                     }));
-
                     int rateLimitRemaining = Integer.parseInt(headers.getOrDefault("X-RateLimit-Remaining", Collections.singletonList("")).get(0));
                     Instant rateLimitReset = Instant.ofEpochMilli(Long.parseLong(headers.get("X-RateLimit-Reset").get(0)) * 1000);
                     token.update(rateLimitRemaining, rateLimitReset);
 
                     // if the call failed, fetch a new token and try again.
                     if (!token.isUsable()) {
-                        LOG.info("Attempting to switch token.");
-                        releaseToken(token);
-                        optToken = getValidToken();
-                        if (!optToken.isPresent()) {
-                            LOG.warning("No token available");
-                            return Optional.empty();
-                        }
-                        token = optToken.get();
-                        LOG.info("Token switch successful");
+                        LOG.info("Token has run out of attemts, " + "Thread " + Thread.currentThread() + " waiting 60 mins.");
+                        Thread.sleep(3600000);
+                        LOG.info("Thread " + Thread.currentThread() + " is continuing work after sleep");
                         continue;
                     }
-
-                    Optional<String> next = Arrays.stream(headers.getOrDefault("Link",
-                            new ArrayList<>(Collections.singleton(""))
-                    ).get(0).split(","))
+                    Optional<String> next = Arrays.stream(headers.getOrDefault("Link", new ArrayList<>(Collections.singleton(""))).get(0).split(","))
                             .filter(link -> link.contains("next")).findFirst();
                     try (BufferedReader buffer = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()))) {
                         data.add(buffer.lines().collect(Collectors.joining("\n")));
@@ -459,11 +354,9 @@ public class GitHubRepository extends Repository {
                     url = nextUrl.substring(nextUrl.indexOf("<") + 1, nextUrl.indexOf(">"));
                 } while (true);
 
-            } finally {
-                if (token != null)
-                    releaseToken(token);
+            } catch (InterruptedException e) {
+                LOG.warning("Thread " + Thread.currentThread() + " was unexpectedly woken up.");
             }
-
             // concatenate all results together, making one large JSON string
             json = String.join("", data).replace("][", ",");
 
@@ -488,23 +381,7 @@ public class GitHubRepository extends Repository {
      */
     private synchronized Optional<Token> getValidToken() {
         synchronized (tokens) {
-
             Optional<Token> optToken = tokens.stream().filter(Token::isUsable).findAny();
-
-            if (sleepOnApiLimit() && !optToken.isPresent()) {
-                try {
-                    LOG.info(String.format("Waiting until %s before the next token is available.", tokenResetTime()));
-                    tokenWaitList.add(Thread.currentThread());
-                    Thread.sleep(tokenResetTime().minusMillis(System.currentTimeMillis()).toEpochMilli());
-                } catch (InterruptedException e) {
-                    return getValidToken();
-                }
-                return getValidToken();
-            }
-            if (optToken.isPresent()) {
-                optToken.get().acquire();
-                LOG.fine(Thread.currentThread() + " acquired token " + tokens);
-            }
             return optToken;
         }
     }
@@ -534,9 +411,6 @@ public class GitHubRepository extends Repository {
         synchronized (tokens) {
             if (tokens.stream().anyMatch(Token::isUsable))
                 return Instant.now();
-            if (tokens.stream().anyMatch(Token::isValid))
-                return Instant.now().plusSeconds(10);
-
             return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).get();
         }
     }
@@ -591,24 +465,6 @@ public class GitHubRepository extends Repository {
         synchronized (allowGuessing) {
             allowGuessing.set(guess);
         }
-    }
-
-    /**
-     * Cleans up the working directory.
-     *
-     * @return {@code true} if successful
-     */
-    public boolean cleanup() {
-        Optional<ProcessExecutor.ExecRes> result = git.exec(dir, "clean", "-d", "-x", "-f");
-        Function<ProcessExecutor.ExecRes, Boolean> toBoolean = res -> {
-            if (git.failed(res)) {
-                LOG.warning("Failed to clean directory");
-                return false;
-            }
-            return true;
-        };
-
-        return result.map(toBoolean).orElse(false);
     }
 
     /**
