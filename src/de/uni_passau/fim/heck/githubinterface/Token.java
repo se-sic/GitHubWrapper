@@ -78,8 +78,8 @@ public class Token {
      *
      * @return {@code true}, if one call can be made, or the token can be reset
      */
-    boolean isValid() {
-        return calls > 5 || Instant.now().isAfter(resetTime);
+    private boolean isValid() {
+        return calls > 20 || Instant.now().isAfter(resetTime);
     }
 
     /**
@@ -89,7 +89,7 @@ public class Token {
      * @see #acquire()
      * @see #isValid()
      */
-    public boolean isUsable() {
+    boolean isUsable() {
         return (!lock.isLocked() || lock.isHeldByCurrentThread()) && isValid();
     }
 

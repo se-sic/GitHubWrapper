@@ -2,20 +2,16 @@ package de.uni_passau.fim.heck.githubinterface;
 
 import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
-import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonWriter;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.*;
 import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
 import de.uni_passau.fim.seibt.gitwrapper.repo.*;
 import io.gsonfire.GsonFireBuilder;
-import jdk.nashorn.internal.ir.debug.JSONWriter;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.HttpClients;
 
-import javax.annotation.concurrent.ThreadSafe;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,7 +20,6 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.logging.Logger;
@@ -39,7 +34,6 @@ public class GitHubRepository extends Repository {
     private static final Logger LOG = Logger.getLogger(GitHubRepository.class.getCanonicalName());
 
     private static final List<Token> tokens = new ArrayList<>();
-    private static final Queue<Thread> tokenWaitList = new ConcurrentLinkedQueue<>();
     private int testID = 0;
 
     private final GitWrapper git;
@@ -51,7 +45,6 @@ public class GitHubRepository extends Repository {
     private final File dir;
 
     private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
-    private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(false);
 
     /**
      * Create a wrapper around a (local) Repository with additional information about GitHub hosted repositories.
@@ -95,28 +88,24 @@ public class GitHubRepository extends Repository {
     /**
      * Gets a List of Issues.
      *
-     * @param includePullRequests if {@code true}, will include {@link PullRequest PullRequests} as well
      * @return optionally a List of IssueData or an empty Optional if an error occurred
      */
-    public JsonArray getIssues(boolean includePullRequests) {
+    public JsonArray getIssues(String cachedir) {
         JsonParser parser = new JsonParser();
-        String cachePath = "./cache_" + repo.getName() + ".json";
-
         List<Integer> cachedIds = new ArrayList<>();
-
         PrintWriter cacheWriter = null;
         try {
-            FileWriter fw = new FileWriter(cachePath, true);
+            FileWriter fw = new FileWriter(cachedir, true);
             BufferedWriter bw = new BufferedWriter(fw);
             cacheWriter = new PrintWriter(bw);
         } catch (IOException e) {
             e.printStackTrace();
         }
-
         byte[] cache;
+
         String cacheText = "";
         try {
-            cache = Files.readAllBytes(Paths.get(cachePath));
+            cache = Files.readAllBytes(Paths.get(cachedir));
             cacheText = new String(cache, "UTF-8");
         } catch (IOException e) {
             e.printStackTrace();
@@ -147,7 +136,7 @@ public class GitHubRepository extends Repository {
         LOG.info("Starting to deserialize issues.");
         PrintWriter finalCacheWriter = cacheWriter;
         input.parallelStream().forEach(json -> {
-            getID();
+            setThreadId();
             try {
                 Thread.sleep(10);
             } catch (InterruptedException e) {
@@ -168,7 +157,7 @@ public class GitHubRepository extends Repository {
                     finalCacheWriter.println(serialize(issue));
                 }
             } else
-                System.out.println("Issue is cached");
+                System.out.println("Issue is loaded from  cache.");
         });
         finalCacheWriter.close();
 
@@ -177,7 +166,7 @@ public class GitHubRepository extends Repository {
         byte[] encoded;
         String text = "empty";
         try {
-            encoded = Files.readAllBytes(Paths.get(cachePath));
+            encoded = Files.readAllBytes(Paths.get(cachedir));
             text = new String(encoded, "UTF-8");
         } catch (IOException e) {
             e.printStackTrace();
@@ -188,7 +177,7 @@ public class GitHubRepository extends Repository {
         return (JsonArray) parser.parse(jsonArrayString);
     }
 
-    private synchronized void getID() {
+    private synchronized void setThreadId() {
         if(testID < tokens.size()) {
             Thread.currentThread().setName(String.valueOf(testID));
             testID++;
@@ -301,7 +290,7 @@ public class GitHubRepository extends Repository {
             System.out.println(Thread.currentThread().getName());
             token = tokens.get(Integer.valueOf(Thread.currentThread().getName()));
         } else
-            token = getValidToken().get();
+            token = tokens.get(0);
 
         if(!token.isUsable()) {
             LOG.info("Token has run out of attemts, " + "Thread " + Thread.currentThread() + " waiting 60 mins.");
@@ -340,7 +329,6 @@ public class GitHubRepository extends Repository {
                         LOG.info("Token has run out of attemts, " + "Thread " + Thread.currentThread() + " waiting 60 mins.");
                         Thread.sleep(3600000);
                         LOG.info("Thread " + Thread.currentThread() + " is continuing work after sleep");
-                        continue;
                     }
                     Optional<String> next = Arrays.stream(headers.getOrDefault("Link", new ArrayList<>(Collections.singleton(""))).get(0).split(","))
                             .filter(link -> link.contains("next")).findFirst();
@@ -366,79 +354,6 @@ public class GitHubRepository extends Repository {
         }
 
         return json == null || json.isEmpty() ? Optional.empty() : Optional.of(json);
-    }
-
-    /**
-     * Gets a valid API Token.
-     * If waiting for the reset of an exhausted token is allowed, this call will block until the first token with free
-     * calls is available.
-     * This method will {@link Token#acquire() acquire} the lock on the Token, if one is returned, the caller is
-     * responsible for releasing the lock, once he does not need it any more.
-     *
-     * @return a valid token, or an empty Optional if none is found and waiting is not allowed.
-     * @see #sleepOnApiLimit(boolean)
-     * @see #releaseToken(Token)
-     */
-    private synchronized Optional<Token> getValidToken() {
-        synchronized (tokens) {
-            Optional<Token> optToken = tokens.stream().filter(Token::isUsable).findAny();
-            return optToken;
-        }
-    }
-
-    /**
-     * {@link Token#release() Releases} the Token and informs the next one waiting.
-     *
-     * @param token the Token to release
-     */
-    private void releaseToken(Token token) {
-        token.release();
-        LOG.fine(Thread.currentThread() + " released token " + token);
-        Thread next = tokenWaitList.poll();
-        if (next != null) {
-            LOG.fine("Waking up " + next + " waiting on token");
-            next.interrupt();
-        }
-    }
-
-    /**
-     * Gets the earliest time, any of the active tokens can be used again.
-     * If there are valid tokens but all are locked, this will return {@code now + 10 seconds}.
-     *
-     * @return the earliest time a single API call can succeed
-     */
-    public static Instant tokenResetTime() {
-        synchronized (tokens) {
-            if (tokens.stream().anyMatch(Token::isUsable))
-                return Instant.now();
-            return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).get();
-        }
-    }
-
-    /**
-     * Gets, if the execution is waiting on an API token to becomes available if all tokens are exhausted.
-     *
-     * @return {@code true} if a sleeping is requested.
-     * @see #sleepOnApiLimit(boolean)
-     */
-    private boolean sleepOnApiLimit() {
-        synchronized (sleepOnApiLimit) {
-            return sleepOnApiLimit.get();
-        }
-    }
-
-    /**
-     * Setter for toggling waiting on exhausted API rate limit.
-     * Default is {@code false}.
-     * This is a global switch and takes immediate effect on all running and future requests.
-     *
-     * @param sleepOnApiLimit if {@code true}, all API calls will wait until the call blocked due to rate limiting succeeds again
-     * @see #tokenResetTime()
-     */
-    public void sleepOnApiLimit(boolean sleepOnApiLimit) {
-        synchronized (this.sleepOnApiLimit) {
-            this.sleepOnApiLimit.set(sleepOnApiLimit);
-        }
     }
 
     /**
