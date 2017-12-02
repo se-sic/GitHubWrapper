@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
  */
 public class GitHubRepository extends Repository {
 
-    private static final Logger LOG = Logger.getLogger(GitHubRepository.class.getCanonicalName());
+    public static final Logger LOG = Logger.getLogger(GitHubRepository.class.getCanonicalName());
 
     private static final List<Token> tokens = new ArrayList<>();
     private int testID = 0;
@@ -95,7 +95,7 @@ public class GitHubRepository extends Repository {
         List<Integer> cachedIds = new ArrayList<>();
         PrintWriter cacheWriter = null;
         try {
-            FileWriter fw = new FileWriter(cachedir, true);
+            FileWriter fw = new FileWriter(cachedir + "/cache.json", true);
             BufferedWriter bw = new BufferedWriter(fw);
             cacheWriter = new PrintWriter(bw);
         } catch (IOException e) {
@@ -105,14 +105,13 @@ public class GitHubRepository extends Repository {
 
         String cacheText = "";
         try {
-            cache = Files.readAllBytes(Paths.get(cachedir));
+            cache = Files.readAllBytes(Paths.get(cachedir + "/cache.json"));
             cacheText = new String(cache, "UTF-8");
         } catch (IOException e) {
             e.printStackTrace();
         }
         String[] cachedIssues = cacheText.split("\n");
         String cacheArrayString = Arrays.toString(cachedIssues);
-        System.out.println(cacheArrayString.length());
         JsonArray cachedArray = (JsonArray) parser.parse(cacheArrayString);
         for(JsonElement iss : cachedArray) {
             JsonObject issobj = iss.getAsJsonObject();
@@ -125,7 +124,6 @@ public class GitHubRepository extends Repository {
             jsonData = parser.parse(test.get());
         else
             return null;
-
         JsonArray array = jsonData.getAsJsonArray();
         List<JsonElement> input = new ArrayList<>();
         for (JsonElement jsonElement : array) {
@@ -136,6 +134,8 @@ public class GitHubRepository extends Repository {
         LOG.info("Starting to deserialize issues.");
         PrintWriter finalCacheWriter = cacheWriter;
         input.parallelStream().forEach(json -> {
+            //This gives the working threads an id from '0' to 'number of thread - 1' which is later used for accessing the tokens.
+            //Not a very nice solution but the only one that I found.
             setThreadId();
             try {
                 Thread.sleep(10);
@@ -152,12 +152,12 @@ public class GitHubRepository extends Repository {
                     LOG.warning("Encountered invalid JSON: " + json);
                     issue = null;
                 }
-                System.out.println("Thread " + Thread.currentThread().getName() + "(" + Thread.currentThread().getId() + ") deserrialized issue number " + (issue != null ? issue.number : 0));
+                LOG.info("Thread " + Thread.currentThread().getName() + "(" + Thread.currentThread().getId() + ") deserrialized issue number " + (issue != null ? issue.number : 0));
                 synchronized (finalCacheWriter) {
                     finalCacheWriter.println(serialize(issue));
                 }
             } else
-                System.out.println("Issue is loaded from  cache.");
+                LOG.info("Issue " + json.getAsJsonObject().get("number").getAsInt() +  " is loaded from  cache.");
         });
         finalCacheWriter.close();
 
@@ -166,7 +166,7 @@ public class GitHubRepository extends Repository {
         byte[] encoded;
         String text = "empty";
         try {
-            encoded = Files.readAllBytes(Paths.get(cachedir));
+            encoded = Files.readAllBytes(Paths.get(cachedir + "/cache.json"));
             text = new String(encoded, "UTF-8");
         } catch (IOException e) {
             e.printStackTrace();
@@ -287,7 +287,6 @@ public class GitHubRepository extends Repository {
         LOG.fine(String.format("Getting json from %s", urlString));
         Token token;
         if (Thread.activeCount() > 1) {
-            System.out.println(Thread.currentThread().getName());
             token = tokens.get(Integer.valueOf(Thread.currentThread().getName()));
         } else
             token = tokens.get(0);

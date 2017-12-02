@@ -9,15 +9,18 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.logging.Logger;
 
 /**
  * Starts the process of loading the issues from Github.
  */
 public class IssueRetriever {
 
+    private static final Logger LOG = Logger.getLogger(GitHubRepository.class.getCanonicalName());
+
     public static void main(String args[]) {
         GitWrapper git;
-        if (args.length != 5) {
+        if (args.length != 4) {
             System.out.println("usage: ResultsPath RepositoryPath TokenFile CacheDirectory");
             return;
         }
@@ -42,15 +45,16 @@ public class IssueRetriever {
                     tokens.add(token);
                 }
             } catch (IOException e) {
-                e.printStackTrace();
+                LOG.severe("A file containing the GitHub Tokens to be used is required to be at this location: " + tokendir);
+                return;
             }
             repo = new GitHubRepository(optRepo.get(), git, tokens);
             repo.allowGuessing(true);
         } else {
-            System.out.println("Cloning failed");
+            LOG.severe("Cloning failed");
             return;
         }
-        System.out.println("Starting to build Json.");
+        LOG.info("Starting to build Json.");
 
 
         try {
