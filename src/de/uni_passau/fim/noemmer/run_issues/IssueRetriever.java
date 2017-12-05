@@ -21,13 +21,17 @@ public class IssueRetriever {
     public static void main(String args[]) {
         GitWrapper git;
         if (args.length != 4) {
-            System.out.println("usage: ResultsPath RepositoryPath TokenFile CacheDirectory");
+            System.out.println("usage: CasestuyName ResultsPath RepositoryPath TokenFile");
             return;
         }
-        String resdir = args[0];
-        String repoPath = args[1];
-        String tokendir = args[2];
-        String cachedir = args[3];
+
+        // ${CASESTUDY} "${RESULTS}" "${REPOS}" "${CFDATA}/configurations/tokens.txt"
+        String casestudy = args[0];
+        File resdir = new File(args[1], casestudy + "_issues");
+        File repoPath = new File(args[2], casestudy);
+        File tokenFile = new File(args[3]);
+        File outputFile = new File(resdir, "issues.json");
+        File cacheFile = new File(resdir, "cache.json");
 
         try {
             git = new GitWrapper("git"); // Or /usr/bin/git, C:\Program Files\Git\bin\git.
@@ -36,16 +40,16 @@ public class IssueRetriever {
             return;
         }
         GitHubRepository repo;
-        Optional<Repository> optRepo = git.importRepository(new File(repoPath));
+        Optional<Repository> optRepo = git.importRepository(repoPath);
         if (optRepo.isPresent()) {
             List<String> tokens = new ArrayList<>();
-            try(BufferedReader br = new BufferedReader(new FileReader(tokendir))) {
+            try(BufferedReader br = new BufferedReader(new FileReader(tokenFile))) {
                 String token;
                 while((token = br.readLine()) != null) {
                     tokens.add(token);
                 }
             } catch (IOException e) {
-                LOG.severe("A file containing the GitHub Tokens to be used is required to be at this location: " + tokendir);
+                LOG.severe("A file containing the GitHub Tokens to be used is required to be at this location: " + tokenFile);
                 return;
             }
             repo = new GitHubRepository(optRepo.get(), git, tokens);
@@ -58,14 +62,13 @@ public class IssueRetriever {
 
 
         try {
-            File directory = new File(resdir);
-            if(! directory.exists()) {
-                directory.mkdirs();
+            if(!resdir.exists()) {
+                resdir.mkdirs();
             }
-            PrintWriter out = new PrintWriter(resdir + "/issues.json", "UTF-8");
+            PrintWriter out = new PrintWriter(outputFile, "UTF-8");
             out.print("[");
             StringBuilder sb = new StringBuilder();
-            repo.getIssues(cachedir).forEach(issue -> {
+            repo.getIssues(cacheFile).forEach(issue -> {
                 sb.append(repo.serialize(issue));
                 sb.append(',');
             });
