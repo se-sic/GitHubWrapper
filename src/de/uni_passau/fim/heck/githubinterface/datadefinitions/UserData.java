@@ -14,4 +14,9 @@ public class UserData {
      * The email address
      */
     public String email;
+
+    /**
+     * The name
+     */
+    public String name;
 }
