@@ -1,13 +1,10 @@
 package de.uni_passau.fim.heck.githubinterface;
 
 import java.lang.reflect.Type;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
@@ -26,6 +23,7 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
 
     private static Map<String, UserData> strictUsers = new ConcurrentHashMap<>();
     private static Map<String, UserData> guessedUsers = new ConcurrentHashMap<>();
+    private static final List<String> currentUsers = Collections.synchronizedList(new ArrayList<>());
     private final GitHubRepository repo;
 
     UserDataDeserializer(GitHubRepository repo) {
@@ -38,12 +36,32 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
 
         Map<String, UserData> lookupList = repo.allowGuessing() ? guessedUsers : strictUsers;
 
-        if (lookupList.containsKey(username)) return lookupList.get(username);
+        if (lookupList.containsKey(username)) {
+            return lookupList.get(username);
+        }
+
+        synchronized (currentUsers) {
+            if (currentUsers.contains(username)) {
+                while (!lookupList.containsKey(username)) {
+                    try {
+                        TimeUnit.MILLISECONDS.sleep(200);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                return lookupList.get(username);
+            }
+            currentUsers.add(username);
+        }
+
 
         UserData user = new UserData();
         user.username = username;
-        user.email = determineEmail(json);
+        insertNameAndMail(json, user);
         lookupList.put(username, user);
+        synchronized (currentUsers) {
+            currentUsers.remove(username);
+        }
         return user;
     }
 
@@ -52,44 +70,56 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
      * email by looking at the history for this user and getting the email which is used most often in the list of
      * pushed commits.
      *
-     * @param user
-     *         the JsonElement representing the data about a user
-     * @return the most probable email for this user
+     * @param user the JsonElement representing the data about a user
      */
-    private String determineEmail(JsonElement user) {
+    private void insertNameAndMail(JsonElement json, UserData user) {
         JsonParser parser = new JsonParser();
 
         // first look at profile
-        Optional<String> userData = repo.getJSONStringFromURL(user.getAsJsonObject().get("url").getAsString());
+        Optional<String> userData = repo.getJSONStringFromURL(json.getAsJsonObject().get("url").getAsString());
         JsonElement data = parser.parse(userData.orElse(""));
         JsonElement email = data.getAsJsonObject().get("email");
-        if (!(email instanceof JsonNull)) return email.getAsString();
+        JsonElement name = data.getAsJsonObject().get("name");
+        if (!(name instanceof JsonNull)) {
+            user.name = name.getAsString();
+        }
+        if (!(email instanceof JsonNull)) {
+            user.email = email.getAsString();
+            return;
+        }
 
         // if we don't want to guess for emails, stop here and don't look at user history
-        if (!repo.allowGuessing()) return "";
+        if (!repo.allowGuessing()) {
+            user.email = "";
+            return;
+        }
 
         // get list of recent pushes
-        Optional<String> eventsData = repo.getJSONStringFromURL(user.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));
+        Optional<String> eventsData = repo.getJSONStringFromURL(json.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));
         data = parser.parse(eventsData.orElse(""));
 
-        Map<String, Integer> emails = new HashMap<>();
+        List<String> emails = new ArrayList<>();
         data.getAsJsonArray().forEach(e -> {
             JsonObject event = e.getAsJsonObject();
             if (event.getAsJsonPrimitive("type").getAsString().equals("PushEvent")) {
                 event.getAsJsonObject("payload")
                         .getAsJsonArray("commits")
-                        .forEach(commit -> emails.merge(commit.getAsJsonObject()
-                                .getAsJsonObject("author")
-                                .getAsJsonPrimitive("email")
-                                .getAsString(), 1, (val, newVal) -> val + newVal));
+                        .forEach(commit -> {
+                                    if (commit.getAsJsonObject().getAsJsonObject("author").getAsJsonPrimitive("name").getAsString().equals(user.username) ||
+                                            commit.getAsJsonObject().getAsJsonObject("author").getAsJsonPrimitive("name").getAsString().equals(user.name))
+                                        emails.add(commit.getAsJsonObject().getAsJsonObject("author")
+                                                .getAsJsonPrimitive("email").getAsString());
+                                }
+                        );
             }
         });
-
-        List<Map.Entry<String, Integer>> posMails = new ArrayList<>(emails.entrySet());
-        if (posMails.isEmpty()) return "";
+        if (emails.isEmpty()) {
+            user.email = "";
+            return;
+        }
+        Map<String, Long> counts = emails.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
 
         // get email with most entries
-        posMails.sort(Comparator.comparingInt(Map.Entry::getValue));
-        return posMails.get(posMails.size() - 1).getKey();
+        user.email = Collections.max(counts.entrySet(), Comparator.comparingLong(Map.Entry::getValue)).getKey();
     }
 }
