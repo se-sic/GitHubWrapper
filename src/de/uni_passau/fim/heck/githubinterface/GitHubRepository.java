@@ -1,5 +1,19 @@
 package de.uni_passau.fim.heck.githubinterface;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonSyntaxException;
+import com.google.gson.reflect.TypeToken;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.*;
+import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
+import de.uni_passau.fim.seibt.gitwrapper.repo.*;
+import io.gsonfire.GsonFireBuilder;
+import org.apache.http.Header;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.HttpClients;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -8,50 +22,12 @@ import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Queue;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
-
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonSyntaxException;
-import com.google.gson.reflect.TypeToken;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.RefData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.State;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.UserData;
-import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
-import de.uni_passau.fim.seibt.gitwrapper.repo.BlameLine;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Branch;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
-import de.uni_passau.fim.seibt.gitwrapper.repo.GitWrapper;
-import de.uni_passau.fim.seibt.gitwrapper.repo.MergeConflict;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Reference;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Repository;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Status;
-import io.gsonfire.GsonFireBuilder;
-import org.apache.http.Header;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.HttpClients;
 
 /**
  * A GitHubRepository wraps a (local) Repository to give access to the GitHub API to provide {@link PullRequestData} and
@@ -586,22 +562,9 @@ public class GitHubRepository extends Repository {
         }
     }
 
-    /**
-     * Cleans up the working directory.
-     *
-     * @return {@code true} if successful
-     */
+    @Override
     public boolean cleanup() {
-        Optional<ProcessExecutor.ExecRes> result = git.exec(dir, "clean", "-d", "-x", "-f");
-        Function<ProcessExecutor.ExecRes, Boolean> toBoolean = res -> {
-            if (git.failed(res)) {
-                LOG.warning("Failed to clean directory");
-                return false;
-            }
-            return true;
-        };
-
-        return result.map(toBoolean).orElse(false);
+        return repo.cleanup();
     }
 
     /**
