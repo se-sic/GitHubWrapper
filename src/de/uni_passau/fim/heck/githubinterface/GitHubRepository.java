@@ -90,12 +90,12 @@ public class GitHubRepository extends Repository {
      *
      * @return optionally a List of IssueData or an empty Optional if an error occurred
      */
-    public JsonArray getIssues(String cachedir) {
+    public JsonArray getIssues(File cacheFile) {
         JsonParser parser = new JsonParser();
         List<Integer> cachedIds = new ArrayList<>();
         PrintWriter cacheWriter = null;
         try {
-            FileWriter fw = new FileWriter(cachedir + "/cache.json", true);
+            FileWriter fw = new FileWriter(cacheFile, true);
             BufferedWriter bw = new BufferedWriter(fw);
             cacheWriter = new PrintWriter(bw);
         } catch (IOException e) {
@@ -105,7 +105,7 @@ public class GitHubRepository extends Repository {
 
         String cacheText = "";
         try {
-            cache = Files.readAllBytes(Paths.get(cachedir + "/cache.json"));
+            cache = Files.readAllBytes(cacheFile.toPath());
             cacheText = new String(cache, "UTF-8");
         } catch (IOException e) {
             e.printStackTrace();
@@ -166,7 +166,7 @@ public class GitHubRepository extends Repository {
         byte[] encoded;
         String text = "empty";
         try {
-            encoded = Files.readAllBytes(Paths.get(cachedir + "/cache.json"));
+            encoded = Files.readAllBytes(cacheFile.toPath());
             text = new String(encoded, "UTF-8");
         } catch (IOException e) {
             e.printStackTrace();
