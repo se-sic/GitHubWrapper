@@ -1,20 +1,14 @@
 package de.uni_passau.fim.heck.githubinterface;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
-import java.util.Queue;
-import java.util.logging.Logger;
-
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.State;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Reference;
+
+import java.util.*;
+import java.util.logging.Logger;
 
 /**
  * A git reference (branch pointer) providing access to the GitHub data about the pull requests represented by this
@@ -102,6 +96,11 @@ public class PullRequest extends Reference {
         if (targetBranch == null) {
             LOG.fine("Target branch was probably deleted.");
             return Optional.empty();
+        }
+
+        // If it is open, we just take the current tip of the target branch
+        if (state == State.OPEN) {
+            return Optional.of(targetBranch);
         }
 
         Optional<Date> date = getTip().map(c -> Date.from(c.getAuthorTime().toInstant()));

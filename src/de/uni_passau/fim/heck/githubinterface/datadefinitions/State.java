@@ -21,6 +21,13 @@ public enum State {
     MERGED,
 
     /**
+     * Denotes open and declined PullRequests.
+     * @see #OPEN
+     * @see #DECLINED
+     */
+    UNMERGED,
+
+    /**
      * Denotes declined/rejected PullRequests.
      */
     DECLINED,
@@ -70,7 +77,8 @@ public enum State {
     }
 
     /**
-     * Helper method to for filtering, {@link #ANY} includes all, {@link #CLOSED} includes {@link #MERGED} and  {@link #DECLINED}
+     * Helper method to for filtering, {@link #ANY} includes all, {@link #CLOSED} includes {@link #MERGED} and
+     * {@link #DECLINED}, and {@link #UNMERGED} includes {@link #OPEN} and {@link #DECLINED}.
      *
      * @param state
      *         the state to check
@@ -79,10 +87,13 @@ public enum State {
      * @return {@code true}, if {@code state} is included in {@code filter}
      */
     public static boolean includes(State state, State filter) {
-        return filter == ANY ||
-              (filter == State.CLOSED &&
-                        (state == State.MERGED ||
-                         state == State.DECLINED)) ||
-               filter == state;
+        return filter == state ||
+               filter == ANY ||
+              (filter == UNMERGED &&
+                       (state == OPEN ||
+                        state == DECLINED)) ||
+              (filter == CLOSED &&
+                        (state == MERGED ||
+                         state == DECLINED));
     }
 }
