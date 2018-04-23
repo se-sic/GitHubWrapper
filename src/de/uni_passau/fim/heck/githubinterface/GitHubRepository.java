@@ -565,8 +565,8 @@ public class GitHubRepository extends Repository {
     }
 
     @Override
-    public boolean cleanup() {
-        return repo.cleanup();
+    public boolean cleanup(String... retain) {
+        return repo.cleanup(retain);
     }
 
     /**
