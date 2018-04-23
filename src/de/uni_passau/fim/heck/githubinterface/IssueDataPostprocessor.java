@@ -1,18 +1,8 @@
 package de.uni_passau.fim.heck.githubinterface;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
+import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
@@ -21,11 +11,21 @@ import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 import de.uni_passau.fim.seibt.gitwrapper.repo.LocalRepository;
 import io.gsonfire.PostProcessor;
 
+import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 /**
  * The IssueDataPostprocessor extracts additional information from issues and populated IssueData instances with other
  * git-related information.
  */
 public class IssueDataPostprocessor implements PostProcessor<IssueData> {
+    private static Map<String, IssueData> cache = new HashMap<>();
+    private static Map<String, IssueData> workingQueue = new HashMap<>();
 
     private final GitHubRepository repo;
 
@@ -41,6 +41,14 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
 
     @Override
     public void postDeserialize(IssueData result, JsonElement src, Gson gson) {
+        // check cache
+        IssueData cacheCheck = cache.get(result.url);
+        if (cacheCheck != null) return;
+        // check if currently worked on, to break cyclic dependencies
+        cacheCheck = workingQueue.get(result.url);
+        if (cacheCheck != null) return;
+        workingQueue.put(result.url, result);
+
         result.isPullRequest = src.getAsJsonObject().get("pull_request") != null;
         result.state = State.getFromString(src.getAsJsonObject().get("state").getAsString());
 
@@ -51,6 +59,10 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
         events.ifPresent(list -> list.forEach(result::addEvent));
 
         parseCommits(result).forEach(result::addRelatedCommit);
+        parseIssues(result, src, gson).forEach(result::addRelatedIssue);
+
+        workingQueue.remove(result.url);
+        cache.put(result.url, result);
     }
 
     /**
@@ -88,7 +100,34 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
     }
 
     /**
-     * Extracts theoretically valid commit hashes form text.
+     *
+     * @param issue
+     * @param src
+     * @param gson
+     * @return
+     */
+    private List<IssueData> parseIssues(IssueData issue, JsonElement src, Gson gson) {
+        Stream<String> commentIssues = issue.getCommentsList().stream().map(comment -> comment.body)
+                .flatMap(body -> extractHashtags(body).stream());
+
+        // to get real reference events, the timeline api needs to be incorporated. Since it is still in preview as of
+        // 2018-04, I have not implemented it.
+        // For details and links: https://gist.github.com/dahlbyk/229f6ee762e2b0b45f3add7c2459e64a
+
+        return Stream.concat(commentIssues, extractHashtags(issue.body).stream()).map(
+                link -> {
+                    Optional<String> refIssue = repo.getJSONStringFromURL(src.getAsJsonObject().get("url").getAsString().replaceAll("/\\d+$", "/" + link));
+                    return refIssue.map(s -> (IssueData) gson.fromJson(s, new TypeToken<IssueData>() {}.getType()));
+                })
+                // filter out false positive matches on normal words (and other errors)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Extracts theoretically valid commit hashes from text.
      *
      * @param text
      *         the text to analyze
@@ -108,6 +147,29 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
         }
 
         return sha1s;
+    }
+
+    /**
+     * Extracts theoretically valid issue links from text.
+     *
+     * @param text
+     *         the text to analyze
+     * @return a List of all valid hashtags
+     */
+    private List<String> extractHashtags(String text) {
+        if (text == null) {
+            return Collections.emptyList();
+        }
+        Pattern sha1Pattern = Pattern.compile("#([0-9]{1,11})");
+        Matcher matcher = sha1Pattern.matcher(text);
+
+        List<String> hashtags = new ArrayList<>();
+
+        while (matcher.find()) {
+            hashtags.add(matcher.group(1));
+        }
+
+        return hashtags;
     }
 
     @Override

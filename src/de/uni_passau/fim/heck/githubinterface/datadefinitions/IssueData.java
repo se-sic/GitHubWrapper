@@ -1,16 +1,18 @@
 package de.uni_passau.fim.heck.githubinterface.datadefinitions;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import javax.annotation.Nullable;
-
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 import de.uni_passau.fim.heck.githubinterface.IssueDataPostprocessor;
 import de.uni_passau.fim.heck.githubinterface.PullRequest;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import javax.annotation.Nullable;
 
 /**
  * Data object for information about Issues.
@@ -71,6 +73,7 @@ public class IssueData {
     private List<CommentData> commentsList = new ArrayList<>();
     private List<EventData> eventsList = new ArrayList<>();
     private List<Commit> relatedCommits = new ArrayList<>();
+    private List<IssueData> relatedIssues = new ArrayList<>();
 
     /**
      * Adds a Comment to this Issue.
@@ -104,6 +107,17 @@ public class IssueData {
     }
 
     /**
+     * Adds a related Issue to this Issue.
+     *
+     * @param issue
+     *         the issue.
+     * @see IssueDataPostprocessor#parseIssues(IssueData, JsonElement, Gson)
+     */
+    public void addRelatedIssue(IssueData issue) {
+        relatedIssues.add(issue);
+    }
+
+    /**
      * Gets a List of all Comments
      *
      * @return a List of CommentData
@@ -128,5 +142,14 @@ public class IssueData {
      */
     public List<Commit> getRelatedCommits() {
         return Collections.unmodifiableList(relatedCommits);
+    }
+
+    /**
+     * Gets a List of all Issues referenced in the Issue and its Comments.
+     *
+     * @return a List of IssueData
+     */
+    public List<IssueData> getRelatedIssues() {
+        return Collections.unmodifiableList(relatedIssues);
     }
 }
