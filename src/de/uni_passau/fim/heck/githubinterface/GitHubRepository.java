@@ -14,10 +14,7 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.HttpClients;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -82,6 +79,40 @@ public class GitHubRepository extends Repository {
     }
 
     /**
+     * Creates a new GitHubRepository based on the given repo. The given file must contain a JSON dump of the list of
+     * corresponding issues from GitHub.
+     *
+     * @param repo
+     *         the repo
+     * @param git
+     *         the GitWrapper
+     * @param oauthToken
+     *         a list of usable oAuth tokens
+     * @param issueCache
+     *         the File containing the issue cache
+     * @throws FileNotFoundException
+     *         if {@code issueCache} is not found
+     */
+    public GitHubRepository(Repository repo, GitWrapper git, List<String> oauthToken, File issueCache) throws FileNotFoundException {
+        this(repo, git, oauthToken);
+
+        // read cache and fill up missing issue data
+        GsonFireBuilder gfb = new GsonFireBuilder();
+        IssueDataPostprocessor issuePP = new IssueDataPostprocessor(this, apiBaseURL + "/issues/");
+        GsonBuilder gb = gfb.createGsonBuilder();
+        gb.registerTypeAdapter(IssueDataCached.class, issuePP);
+        gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
+        gb.serializeNulls();
+        Gson tempGson = gb.create();
+        List<IssueData> issues = new ArrayList<>(tempGson.fromJson(new BufferedReader(new FileReader(issueCache)), new TypeToken<List<IssueDataCached>>() {}.getType()));
+        IssueDataPostprocessor.addCache(issues);
+
+        issues.forEach(issueData -> issueData.addRelatedIssues(issuePP.parseIssues(issueData, gson)));
+
+        getPullRequests();
+    }
+
+    /**
      * Create a wrapper around a (local) Repository with additional information about GitHub hosted repositories.
      *
      * @param repo
@@ -109,11 +140,11 @@ public class GitHubRepository extends Repository {
         }
 
         GsonFireBuilder gfb = new GsonFireBuilder();
-        IssueDataPostprocessor issuePP = new IssueDataPostprocessor(this);
+        IssueDataPostprocessor issuePP = new IssueDataPostprocessor(this, apiBaseURL + "/issues/");
         gfb.registerPostProcessor(IssueData.class, issuePP);
         GsonBuilder gb = gfb.createGsonBuilder();
-        gb.registerTypeAdapter(Commit.class, new CommitSerializer());
         gb.registerTypeAdapter(IssueDataCached.class, issuePP);
+        gb.registerTypeAdapter(Commit.class, new CommitSerializer());
         gb.registerTypeAdapter(UserData.class, new UserDataDeserializer(this));
         gb.registerTypeAdapter(EventData.class, new EventDataDeserializer());
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -448,7 +479,7 @@ public class GitHubRepository extends Repository {
             return Optional.empty();
         }
 
-        return json == null || json.isEmpty() ? Optional.empty() : Optional.of(json);
+        return json.isEmpty() ? Optional.empty() : Optional.of(json);
     }
 
     /**
@@ -579,7 +610,7 @@ public class GitHubRepository extends Repository {
      *         the object to serialize
      * @return a String containing the JSON representation
      */
-    public String serialize(Object obj) {
+    public <T> String serialize(T obj) {
         return gson.toJson(obj);
     }
 
@@ -687,6 +718,8 @@ public class GitHubRepository extends Repository {
         return repo.getName();
     }
 
-    // used for internal tracking of Issues
+    /**
+     * Only used internally for deserialization, don't implement!
+     */
     public interface IssueDataCached {}
 }

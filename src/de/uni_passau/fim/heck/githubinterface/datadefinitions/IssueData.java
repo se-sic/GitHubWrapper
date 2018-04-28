@@ -1,7 +1,6 @@
 package de.uni_passau.fim.heck.githubinterface.datadefinitions;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonElement;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 import de.uni_passau.fim.heck.githubinterface.GitHubRepository;
@@ -112,7 +111,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *
      * @param issues
      *         the issue.
-     * @see IssueDataPostprocessor#parseIssues(IssueData, JsonElement, Gson)
+     * @see IssueDataPostprocessor#parseIssues(IssueData, Gson)
      */
     public void addRelatedIssues(List<IssueData> issues) {
         issues.sort(Comparator.comparing(issue -> issue.created_at));

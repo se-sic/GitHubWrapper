@@ -26,6 +26,7 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
     private static Map<String, IssueData> workingQueue = new HashMap<>();
 
     private final GitHubRepository repo;
+    private final String issueBaseUrl;
     private final JsonParser parser = new JsonParser();
 
     /**
@@ -34,8 +35,9 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
      * @param repo
      *         the repository
      */
-    IssueDataPostprocessor(GitHubRepository repo) {
+    IssueDataPostprocessor(GitHubRepository repo, String issueBaseUrl) {
         this.repo = repo;
+        this.issueBaseUrl = issueBaseUrl;
     }
 
     @Override
@@ -63,7 +65,7 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
         events.ifPresent(result::addEvents);
 
         result.addRelatedCommits(parseCommits(result));
-        result.addRelatedIssues(parseIssues(result, issueSource, gson));
+        result.addRelatedIssues(parseIssues(result, gson));
 
         workingQueue.remove(result.url);
     }
@@ -103,13 +105,15 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
     }
 
     /**
+     * Parses a list of all referenced Issues
      *
      * @param issue
-     * @param src
+     *         the Issue to analyze
      * @param gson
-     * @return
+     *         the Gson used to deserialize
+     * @return a list of all Issues that are referenced in the body and the comments
      */
-    private List<IssueData> parseIssues(IssueData issue, JsonElement src, Gson gson) {
+    List<IssueData> parseIssues(IssueData issue, Gson gson) {
         Stream<String> commentIssues = issue.getCommentsList().stream().map(comment -> comment.body)
                 .flatMap(body -> extractHashtags(body).stream());
 
@@ -119,7 +123,7 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
 
         return Stream.concat(commentIssues, extractHashtags(issue.body).stream()).map(
                 link -> {
-                    Optional<String> refIssue = repo.getJSONStringFromURL(src.getAsJsonObject().get("url").getAsString().replaceAll("/\\d+$", "/" + link));
+                    Optional<String> refIssue = repo.getJSONStringFromURL(issueBaseUrl + link);
                     return refIssue.map(s -> (IssueData) gson.fromJson(s, new TypeToken<IssueDataCached>() {}.getType()));
                 })
                 // filter out false positive matches on normal words (and other errors)
@@ -184,19 +188,32 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
 
     @Override
     public IssueDataCached deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
-        String url = json.getAsJsonObject().get("html_url").getAsString();
-        IssueData cached = cache.get(url);
+        JsonElement url = json.getAsJsonObject().get("html_url");
+        if (url == null) {
+            url = json.getAsJsonObject().get("url");
+        }
+        IssueData cached = cache.get(url.getAsString());
         if (cached != null) {
             return cached;
         }
 
         JsonElement pr = json.getAsJsonObject().get("pull_request");
         if(pr != null) {
+            JsonElement finalUrl = url;
             String data = repo.getJSONStringFromURL(pr.getAsJsonObject().get("url").getAsString())
-                    .orElseThrow(() -> new JsonParseException("Could not get PullRequest data for this issue: " + url));
+                    .orElseThrow(() -> new JsonParseException("Could not get PullRequest data for this issue: " + finalUrl.toString()));
             return context.deserialize(parser.parse(data), new TypeToken<PullRequestData>() {}.getType());
         }
 
+        pr = json.getAsJsonObject().get("isPullRequest");
+        if (pr != null && pr.getAsBoolean()) {
+            return context.deserialize(json, new TypeToken<PullRequestData>() {}.getType());
+        }
+
         return context.deserialize(json, new TypeToken<IssueData>() {}.getType());
+    }
+
+    static void addCache(List<IssueData> protoCache) {
+        cache.putAll(protoCache.stream().collect(Collectors.toMap(issue -> issue.url, issue -> issue)));
     }
 }
