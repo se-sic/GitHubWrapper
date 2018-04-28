@@ -107,8 +107,9 @@ public class GitHubRepository extends Repository {
         List<IssueData> issues = new ArrayList<>(tempGson.fromJson(new BufferedReader(new FileReader(issueCache)), new TypeToken<List<IssueDataCached>>() {}.getType()));
         IssueDataPostprocessor.addCache(issues);
 
-        issues.forEach(issueData -> issueData.addRelatedIssues(issuePP.parseIssues(issueData, gson)));
+        issues.forEach(issueData -> issueData.addRelatedIssues(issuePP.parseIssues(issueData, tempGson)));
 
+        this.issues = issues;
         getPullRequests();
     }
 
@@ -174,7 +175,7 @@ public class GitHubRepository extends Repository {
      * Gets a List of Issues.
      *
      * @param includePullRequests
-     *         if {@code true}, will include {@link PullRequest PullRequests} as well
+     *         if {@code true}, will include {@link PullRequestData PullRequests} as well
      * @return optionally a List of IssueData or an empty Optional if an error occurred
      */
     public Optional<List<IssueData>> getIssues(boolean includePullRequests) {
@@ -597,11 +598,6 @@ public class GitHubRepository extends Repository {
         }
     }
 
-    @Override
-    public boolean cleanup(String... retain) {
-        return repo.cleanup(retain);
-    }
-
     /**
      * This method provides a convenient way to convert GitHub-related objects back to their JSON representation
      * (For now only GitHub related data and commits can be serialized)
@@ -621,6 +617,11 @@ public class GitHubRepository extends Repository {
      */
     public Repository getRepo() {
         return repo;
+    }
+
+    @Override
+    public boolean cleanup(String... retain) {
+        return repo.cleanup(retain);
     }
 
     @Override
