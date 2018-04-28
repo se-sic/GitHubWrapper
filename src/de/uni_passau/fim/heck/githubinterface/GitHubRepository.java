@@ -109,9 +109,11 @@ public class GitHubRepository extends Repository {
         }
 
         GsonFireBuilder gfb = new GsonFireBuilder();
-        gfb.registerPostProcessor(IssueData.class, new IssueDataPostprocessor(this));
+        IssueDataPostprocessor issuePP = new IssueDataPostprocessor(this);
+        gfb.registerPostProcessor(IssueData.class, issuePP);
         GsonBuilder gb = gfb.createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitSerializer());
+        gb.registerTypeAdapter(IssueDataCached.class, issuePP);
         gb.registerTypeAdapter(UserData.class, new UserDataDeserializer(this));
         gb.registerTypeAdapter(EventData.class, new EventDataDeserializer());
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -149,13 +151,13 @@ public class GitHubRepository extends Repository {
            getJSONStringFromPath("/issues?state=all").map(json -> {
                 ArrayList<IssueData> data;
                 try {
-                    data = gson.fromJson(json, new TypeToken<ArrayList<IssueData>>() {}.getType());
+                    data = new ArrayList<>(gson.fromJson(json, new TypeToken<ArrayList<IssueDataCached>>() {}.getType()));
                 } catch (JsonSyntaxException e) {
                     LOG.warning("Encountered invalid JSON: " + json);
                     return null;
                 }
 
-                if (data != null && !includePullRequests) {
+                if (!includePullRequests) {
                     return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
                 }
                 return data;
@@ -687,4 +689,7 @@ public class GitHubRepository extends Repository {
     public String getName() {
         return repo.getName();
     }
+
+    // used for internal tracking of Issues
+    public interface IssueDataCached {}
 }

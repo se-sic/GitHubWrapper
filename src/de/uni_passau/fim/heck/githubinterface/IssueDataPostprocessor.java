@@ -1,7 +1,6 @@
 package de.uni_passau.fim.heck.githubinterface;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonElement;
+import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
@@ -11,6 +10,7 @@ import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 import de.uni_passau.fim.seibt.gitwrapper.repo.LocalRepository;
 import io.gsonfire.PostProcessor;
 
+import java.lang.reflect.Type;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -23,7 +23,7 @@ import java.util.stream.Stream;
  * The IssueDataPostprocessor extracts additional information from issues and populated IssueData instances with other
  * git-related information.
  */
-public class IssueDataPostprocessor implements PostProcessor<IssueData> {
+public class IssueDataPostprocessor implements JsonDeserializer<GitHubRepository.IssueDataCached>, PostProcessor<IssueData> {
     private static Map<String, IssueData> cache = new HashMap<>();
     private static Map<String, IssueData> workingQueue = new HashMap<>();
 
@@ -41,13 +41,11 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
 
     @Override
     public void postDeserialize(IssueData result, JsonElement src, Gson gson) {
-        // check cache
-        IssueData cacheCheck = cache.get(result.url);
-        if (cacheCheck != null) return;
         // check if currently worked on, to break cyclic dependencies
-        cacheCheck = workingQueue.get(result.url);
+        IssueData cacheCheck = workingQueue.get(result.url);
         if (cacheCheck != null) return;
         workingQueue.put(result.url, result);
+        cache.put(result.url, result);
 
         result.isPullRequest = src.getAsJsonObject().get("pull_request") != null;
         result.state = State.getFromString(src.getAsJsonObject().get("state").getAsString());
@@ -62,7 +60,6 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
         parseIssues(result, src, gson).forEach(result::addRelatedIssue);
 
         workingQueue.remove(result.url);
-        cache.put(result.url, result);
     }
 
     /**
@@ -117,7 +114,7 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
         return Stream.concat(commentIssues, extractHashtags(issue.body).stream()).map(
                 link -> {
                     Optional<String> refIssue = repo.getJSONStringFromURL(src.getAsJsonObject().get("url").getAsString().replaceAll("/\\d+$", "/" + link));
-                    return refIssue.map(s -> (IssueData) gson.fromJson(s, new TypeToken<IssueData>() {}.getType()));
+                    return refIssue.map(s -> (IssueData) gson.fromJson(s, new TypeToken<GitHubRepository.IssueDataCached>() {}.getType()));
                 })
                 // filter out false positive matches on normal words (and other errors)
                 .filter(Optional::isPresent)
@@ -174,4 +171,15 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
 
     @Override
     public void postSerialize(JsonElement result, IssueData src, Gson gson) { }
+
+    @Override
+    public GitHubRepository.IssueDataCached deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
+        IssueData cached = cache.get(json.getAsJsonObject().get("html_url").getAsString());
+        if (cached != null) {
+            return cached;
+        }
+        return context.deserialize(json, new TypeToken<IssueData>() {}.getType());
+    }
+
+
 }

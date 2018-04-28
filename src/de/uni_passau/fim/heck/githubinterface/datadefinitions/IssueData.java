@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
+import de.uni_passau.fim.heck.githubinterface.GitHubRepository;
 import de.uni_passau.fim.heck.githubinterface.IssueDataPostprocessor;
 import de.uni_passau.fim.heck.githubinterface.PullRequest;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
@@ -17,7 +18,7 @@ import javax.annotation.Nullable;
 /**
  * Data object for information about Issues.
  */
-public class IssueData {
+public class IssueData implements GitHubRepository.IssueDataCached {
 
     /**
      * The number of the issue (referenced with {@code #nr}).
