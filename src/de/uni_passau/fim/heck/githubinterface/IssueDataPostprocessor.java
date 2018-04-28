@@ -176,7 +176,11 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
     }
 
     @Override
-    public void postSerialize(JsonElement result, IssueData src, Gson gson) { }
+    public void postSerialize(JsonElement result, IssueData src, Gson gson) {
+        JsonArray issues = new JsonArray();
+        src.getRelatedIssues().stream().map(issue -> issue.number).forEach(issues::add);
+        result.getAsJsonObject().add("relatedIssues", issues);
+    }
 
     @Override
     public IssueDataCached deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {

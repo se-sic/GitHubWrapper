@@ -74,7 +74,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     private List<CommentData> commentsList = new ArrayList<>();
     private List<EventData> eventsList = new ArrayList<>();
     private List<Commit> relatedCommits = new ArrayList<>();
-    private List<IssueData> relatedIssues = new ArrayList<>();
+    private transient List<IssueData> relatedIssues = new ArrayList<>();
 
     /**
      * Adds a Comment to this Issue.
