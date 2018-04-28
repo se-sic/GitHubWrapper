@@ -48,6 +48,7 @@ public class GitHubRepository extends Repository {
     private final String apiBaseURL;
     private final File dir;
     private List<PullRequest> pullRequests;
+    private List<IssueData> issues;
 
     private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
     private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(false);
@@ -144,20 +145,23 @@ public class GitHubRepository extends Repository {
      * @return optionally a List of IssueData or an empty Optional if an error occurred
      */
     public Optional<List<IssueData>> getIssues(boolean includePullRequests) {
-        return getJSONStringFromPath("/issues?state=all").map(json -> {
-            ArrayList<IssueData> data;
-            try {
-                data = gson.fromJson(json, new TypeToken<ArrayList<IssueData>>() {}.getType());
-            } catch (JsonSyntaxException e) {
-                LOG.warning("Encountered invalid JSON: " + json);
-                return null;
-            }
+        if(issues == null) {
+           getJSONStringFromPath("/issues?state=all").map(json -> {
+                ArrayList<IssueData> data;
+                try {
+                    data = gson.fromJson(json, new TypeToken<ArrayList<IssueData>>() {}.getType());
+                } catch (JsonSyntaxException e) {
+                    LOG.warning("Encountered invalid JSON: " + json);
+                    return null;
+                }
 
-            if (data != null && !includePullRequests) {
-                return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
-            }
-            return data;
-        });
+                if (data != null && !includePullRequests) {
+                    return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
+                }
+                return data;
+            }).ifPresent(list -> issues = list);
+        }
+        return Optional.ofNullable(issues);
     }
 
     /**
@@ -266,7 +270,7 @@ public class GitHubRepository extends Repository {
                 LOG.warning("Encountered invalid JSON: " + json);
                 return;
             }
-            pullRequests = new ArrayList<>(data.stream().map(pr -> {
+            pullRequests = data.stream().map(pr -> {
                 State state = State.getPRState(pr.state, pr.merged_at != null);
 
                 // if the fork was deleted and the PR was rejected or is still open, we cannot get verify the
@@ -313,8 +317,7 @@ public class GitHubRepository extends Repository {
                     return new PullRequest(this, target, commits, pr);
                 }
                 return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, state, target, commits, pr);
-
-            }).filter(Objects::nonNull).collect(Collectors.toList()));
+            }).filter(Objects::nonNull).collect(Collectors.toList());
         });
     }
 
