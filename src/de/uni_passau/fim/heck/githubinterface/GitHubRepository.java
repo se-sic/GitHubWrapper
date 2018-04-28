@@ -2,6 +2,7 @@ package de.uni_passau.fim.heck.githubinterface;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.*;
@@ -20,7 +21,10 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.logging.Logger;
@@ -49,6 +53,8 @@ public class GitHubRepository extends Repository {
 
     private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
     private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(false);
+
+    private ForkJoinPool threadPool;
 
     /**
      * Create a wrapper around a (local) repository with additional information about GitHub hosted repositories.
@@ -157,6 +163,8 @@ public class GitHubRepository extends Repository {
         gson = gb.create();
 
         hc = HttpClients.createDefault();
+
+        threadPool = new ForkJoinPool(oauthToken.size());
     }
 
     /**
@@ -184,25 +192,36 @@ public class GitHubRepository extends Repository {
      */
     public Optional<List<IssueData>> getIssues(boolean includePullRequests) {
         if(issues == null) {
-           getJSONStringFromPath("/issues?state=all").map(json -> {
-                ArrayList<IssueData> data;
+            getJSONStringFromPath("/issues?state=all").map(json -> {
+                List<IssueData> data;
                 try {
-                    data = new ArrayList<>(gson.fromJson(json, new TypeToken<ArrayList<IssueDataCached>>() {}.getType()));
+                    ArrayList<JsonElement> list = gson.fromJson(json, new TypeToken<ArrayList<JsonElement>>() {}.getType());
+                    Callable<List<IssueData>> converter = () ->
+                            list.parallelStream()
+                                    .map(element -> (IssueData) (gson.fromJson(element, new  TypeToken<IssueDataCached>() {}.getType())))
+                                    .collect(Collectors.toList());
+                    data = threadPool.submit(converter).get();
+                } catch (InterruptedException e) {
+                    LOG.warning("Encountered interruption while processing JSON");
+                    return null;
+                } catch (ExecutionException e) {
+                    LOG.warning("Encountered exception while processing JSON: " + e);
+                    return null;
                 } catch (JsonSyntaxException e) {
                     LOG.warning("Encountered invalid JSON: " + json);
                     return null;
                 }
-
-                if (!includePullRequests) {
-                    return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
-                }
                 return data;
-           }).ifPresent(list -> {
-               list.sort(Comparator.comparing(issue -> issue.created_at));
-               issues = Collections.unmodifiableList(list);
-           });
+            }).ifPresent(list -> {
+                list.sort(Comparator.comparing(issue -> issue.created_at));
+                issues = Collections.unmodifiableList(list);
+            });
         }
-        return Optional.ofNullable(issues);
+
+        if (!includePullRequests) {
+            return Optional.of(issues.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList()));
+        }
+        return Optional.of(issues);
     }
 
     /**
@@ -394,28 +413,28 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Returns an InputStreamReader reading the JSON data returned from the GitHub API called with the API path on the
-     * current repository.
+     * Returns a string reading the JSON data returned from the GitHub API called with the API path on the current
+     * repository.
      *
      * @param path
      *         the API path to call
-     * @return an InputStreamReader on the result
+     * @return optionally a string representing the JSON result, or an empty Optional, if the call failed
      */
     private Optional<String> getJSONStringFromPath(String path) {
         return getJSONStringFromURL(apiBaseURL + path);
     }
 
     /**
-     * Returns an InputStreamReader reading the JSON data returned from the GitHub API called with the given URL.
+     * Returns a string of the JSON data returned from the GitHub API called with the given URL.
      * The caller is responsible, that the URL matches this repository.
      *
      * @param urlString
      *         the URL to call
-     * @return an InputStreamReader on the result
+     * @return optionally, a string representing the JSON result, or an empty Optional, if the call failed
      */
     Optional<String> getJSONStringFromURL(String urlString) {
         String json;
-        LOG.fine(String.format("Getting json from %s", urlString));
+        LOG.fine(String.format("Getting json from %s by Thread %s", urlString, Thread.currentThread().getName()));
         try {
             List<String> data = new ArrayList<>();
             String url = urlString + (urlString.contains("?") ? "&" : "?") + "per_page=100";
@@ -434,6 +453,7 @@ public class GitHubRepository extends Repository {
 
                     if (resp.getStatusLine().getStatusCode() != 200) {
                         LOG.warning(String.format("Could not access api method: %s returned %s", url, resp.getStatusLine()));
+                        resp.getEntity().getContent().close();
                         return Optional.empty();
                     }
 
@@ -446,18 +466,6 @@ public class GitHubRepository extends Repository {
                     Instant rateLimitReset = Instant.ofEpochMilli(Long.parseLong(headers.get("X-RateLimit-Reset").get(0)) * 1000);
                     token.update(rateLimitRemaining, rateLimitReset);
 
-                    // if the call failed, fetch a new token and try again.
-                    if (!token.isUsable()) {
-                        releaseToken(token);
-                        optToken = getValidToken();
-                        if (!optToken.isPresent()) {
-                            LOG.warning("No token available");
-                            return Optional.empty();
-                        }
-                        token = optToken.get();
-                        continue;
-                    }
-
                     Optional<String> next = Arrays.stream(headers.getOrDefault("Link",
                             new ArrayList<>(Collections.singleton(""))
                     ).get(0).split(","))
@@ -467,6 +475,19 @@ public class GitHubRepository extends Repository {
                     }
                     resp.getEntity().getContent().close();
 
+                    // if this call was the last possible, fetch a new token for the next round
+                    if (!token.isUsable()) {
+                        releaseToken(token);
+                        optToken = getValidToken();
+                        if (!optToken.isPresent()) {
+                            LOG.warning("No token available");
+                            token = null;
+                            return Optional.empty();
+                        }
+                        token = optToken.get();
+                    }
+
+                    // check, if another page is available
                     if (!next.isPresent()) break;
                     String nextUrl = next.get();
                     url = nextUrl.substring(nextUrl.indexOf("<") + 1, nextUrl.indexOf(">"));
@@ -477,7 +498,7 @@ public class GitHubRepository extends Repository {
             }
 
             // concatenate all results together, making one large JSON string
-           json = String.join("", data).replace("][", ",");
+            json = String.join("", data).replace("][", ",");
 
         } catch (IOException e) {
             LOG.warning("Could not get data from GitHub.");
@@ -511,9 +532,7 @@ public class GitHubRepository extends Repository {
                 }
                 return getValidToken();
             }
-            if (optToken.isPresent()) {
-                LOG.fine(Thread.currentThread() + " acquired token " + tokens);
-            }
+            optToken.ifPresent(token -> LOG.fine(Thread.currentThread() + " acquired token " + token));
             return optToken;
         }
     }

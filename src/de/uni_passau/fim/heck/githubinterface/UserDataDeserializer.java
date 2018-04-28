@@ -15,6 +15,7 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
 
     private static Map<String, UserData> strictUsers = new ConcurrentHashMap<>();
     private static Map<String, UserData> guessedUsers = new ConcurrentHashMap<>();
+    private static final JsonParser parser = new JsonParser();
     private final GitHubRepository repo;
 
     /**
@@ -29,62 +30,84 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
 
     @Override
     public UserData deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
-        String username = json.getAsJsonObject().get("login").getAsString();
-
         Map<String, UserData> lookupList = repo.allowGuessing() ? guessedUsers : strictUsers;
 
+        String username = json.getAsJsonObject().get("login").getAsString();
         if (lookupList.containsKey(username)) return lookupList.get(username);
 
-        UserData user = new UserData();
-        user.username = username;
-        user.email = determineEmail(json);
+        Optional<String> userProfile = repo.getJSONStringFromURL(json.getAsJsonObject().get("url").getAsString());
+        JsonElement userData = parser.parse(userProfile.orElse(""));
+        UserData user = buildUser(username, userData);
         lookupList.put(username, user);
         return user;
     }
 
     /**
-     * Tries getting the email, first by looking if a public email is set on the profile and if not, tries to guess the
-     * email by looking at the history for this user and getting the email which is used most often in the list of
-     * pushed commits.
+     * Constructs a new UserData instance.
      *
-     * @param user
-     *         the JsonElement representing the data about a user
-     * @return the most probable email for this user
+     * The email is determined in multiple steps, first by looking if a public email is set on the profile and if not,
+     * tries to guess the email by looking at the history for this user and getting the email which is used most often
+     * in the list of pushed commits while the corresponding name is set to the GitHub username or name.
+     *
+     * @param data
+     *         the JsonElement representing the data from the user profile
+     * @return the new UserData instance representing the user
      */
-    private String determineEmail(JsonElement user) {
-        JsonParser parser = new JsonParser();
+    private UserData buildUser(String username, JsonElement data) {
+        UserData user = new UserData();
+        user.username = username;
+        JsonElement name = data.getAsJsonObject().get("name");
+        if (!(name instanceof JsonNull)) {
+            user.name = name.getAsString();
+        }
 
+        //////EMAIL/////
+        user.email = "";
         // first look at profile
-        Optional<String> userData = repo.getJSONStringFromURL(user.getAsJsonObject().get("url").getAsString());
-        JsonElement data = parser.parse(userData.orElse(""));
         JsonElement email = data.getAsJsonObject().get("email");
-        if (!(email instanceof JsonNull)) return email.getAsString();
+        if (!(email instanceof JsonNull)) {
+            user.email = email.getAsString();
+            return user;
+        }
 
         // if we don't want to guess for emails, stop here and don't look at user history
-        if (!repo.allowGuessing()) return "";
+        if (!repo.allowGuessing()) {
+            return user;
+        }
 
         // get list of recent pushes
-        Optional<String> eventsData = repo.getJSONStringFromURL(user.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));
-        data = parser.parse(eventsData.orElse(""));
+        Optional<String> eventsData = repo.getJSONStringFromURL(data.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));
+        JsonElement userData = parser.parse(eventsData.orElse(""));
 
         Map<String, Integer> emails = new HashMap<>();
-        data.getAsJsonArray().forEach(e -> {
+        userData.getAsJsonArray().forEach(e -> {
             JsonObject event = e.getAsJsonObject();
             if (event.getAsJsonPrimitive("type").getAsString().equals("PushEvent")) {
                 event.getAsJsonObject("payload")
                         .getAsJsonArray("commits")
-                        .forEach(commit -> emails.merge(commit.getAsJsonObject()
-                                .getAsJsonObject("author")
-                                .getAsJsonPrimitive("email")
-                                .getAsString(), 1, (val, newVal) -> val + newVal));
+                        .forEach(commit -> {
+                            JsonObject author = commit.getAsJsonObject().getAsJsonObject("author");
+                            if (author.getAsJsonPrimitive("name").getAsString().equals(user.name)
+                             || author.getAsJsonPrimitive("name").getAsString().equals(user.username)) {
+                                emails.merge(commit.getAsJsonObject()
+                                                .getAsJsonObject("author")
+                                                .getAsJsonPrimitive("email")
+                                                .getAsString(),
+                                        1, (val, newVal) -> val + newVal);
+                            }
+                        });
             }
         });
 
         List<Map.Entry<String, Integer>> posMails = new ArrayList<>(emails.entrySet());
-        if (posMails.isEmpty()) return "";
+        if (posMails.isEmpty()) {
+            return user;
+        }
 
         // get email with most entries
         posMails.sort(Comparator.comparingInt(Map.Entry::getValue));
-        return posMails.get(posMails.size() - 1).getKey();
+        user.email = posMails.get(posMails.size() - 1).getKey();
+
+        return user;
     }
 }

@@ -47,7 +47,7 @@ public class Token {
      *
      * @return the token
      */
-    public String getToken() {
+    String getToken() {
         return token;
     }
 
@@ -89,7 +89,7 @@ public class Token {
      * @see #acquire()
      * @see #isValid()
      */
-    public boolean isUsable() {
+    boolean isUsable() {
         return (!lock.isLocked() || lock.isHeldByCurrentThread()) && isValid();
     }
 
