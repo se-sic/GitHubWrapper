@@ -59,11 +59,11 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
         Optional<List<CommentData>> comments = repo.getComments(lookup);
         Optional<List<EventData>> events = repo.getEvents(lookup);
 
-        comments.ifPresent(list -> list.forEach(result::addComment));
-        events.ifPresent(list -> list.forEach(result::addEvent));
+        comments.ifPresent(result::addComments);
+        events.ifPresent(result::addEvents);
 
-        parseCommits(result).forEach(result::addRelatedCommit);
-        parseIssues(result, issueSource, gson).forEach(result::addRelatedIssue);
+        result.addRelatedCommits(parseCommits(result));
+        result.addRelatedIssues(parseIssues(result, issueSource, gson));
 
         workingQueue.remove(result.url);
     }

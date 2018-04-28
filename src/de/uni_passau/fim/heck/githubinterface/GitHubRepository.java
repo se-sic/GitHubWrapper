@@ -161,7 +161,10 @@ public class GitHubRepository extends Repository {
                     return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
                 }
                 return data;
-            }).ifPresent(list -> issues = list);
+           }).ifPresent(list -> {
+               list.sort(Comparator.comparing(issue -> issue.created_at));
+               issues = Collections.unmodifiableList(list);
+           });
         }
         return Optional.ofNullable(issues);
     }
@@ -313,6 +316,7 @@ public class GitHubRepository extends Repository {
                 }
                 return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, state, target, commits, pr);
             }).filter(Objects::nonNull).collect(Collectors.toList());
+            pullRequests.sort(Comparator.comparing(pr -> pr.getIssue().created_at));
         });
     }
 

@@ -9,10 +9,7 @@ import de.uni_passau.fim.heck.githubinterface.IssueDataPostprocessor;
 import de.uni_passau.fim.heck.githubinterface.PullRequest;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import javax.annotation.Nullable;
 
 /**
@@ -77,45 +74,49 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     private transient List<IssueData> relatedIssues = new ArrayList<>();
 
     /**
-     * Adds a Comment to this Issue.
+     * Adds a list of Comments to this Issue.
      *
-     * @param comment
-     *         the Comment
+     * @param comments
+     *         the Comment list
      */
-    public void addComment(CommentData comment) {
-        commentsList.add(comment);
+    public void addComments(List<CommentData> comments) {
+        comments.sort(Comparator.comparing((comment) -> comment.created_at));
+        commentsList = Collections.unmodifiableList(comments);
     }
 
     /**
-     * Adds an Event to this Issue.
+     * Adds a list of Events to this Issue.
      *
-     * @param event
-     *         the Event.
+     * @param events
+     *         the Event list.
      */
-    public void addEvent(EventData event) {
-        eventsList.add(event);
+    public void addEvents(List<EventData> events) {
+        events.sort(Comparator.comparing(event -> event.created_at));
+        eventsList = Collections.unmodifiableList(events);
     }
 
     /**
      * Adds a related Commit to this Issue.
      *
-     * @param commit
-     *         the Commit.
+     * @param commits
+     *         the Commit list
      * @see IssueDataPostprocessor#parseCommits(IssueData)
      */
-    public void addRelatedCommit(Commit commit) {
-        relatedCommits.add(commit);
+    public void addRelatedCommits(List<Commit> commits) {
+        commits.sort(Comparator.comparing(Commit::getAuthorTime));
+        relatedCommits = Collections.unmodifiableList(commits);
     }
 
     /**
      * Adds a related Issue to this Issue.
      *
-     * @param issue
+     * @param issues
      *         the issue.
      * @see IssueDataPostprocessor#parseIssues(IssueData, JsonElement, Gson)
      */
-    public void addRelatedIssue(IssueData issue) {
-        relatedIssues.add(issue);
+    public void addRelatedIssues(List<IssueData> issues) {
+        issues.sort(Comparator.comparing(issue -> issue.created_at));
+        relatedIssues = Collections.unmodifiableList(issues);
     }
 
     /**
@@ -124,7 +125,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      * @return a List of CommentData
      */
     public List<CommentData> getCommentsList() {
-        return Collections.unmodifiableList(commentsList);
+        return commentsList;
     }
 
     /**
@@ -133,7 +134,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      * @return a List of EventData
      */
     public List<EventData> getEventsList() {
-        return Collections.unmodifiableList(eventsList);
+        return eventsList;
     }
 
     /**
@@ -142,7 +143,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      * @return a List of Commits
      */
     public List<Commit> getRelatedCommits() {
-        return Collections.unmodifiableList(relatedCommits);
+        return relatedCommits;
     }
 
     /**
@@ -151,6 +152,6 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      * @return a List of IssueData
      */
     public List<IssueData> getRelatedIssues() {
-        return Collections.unmodifiableList(relatedIssues);
+        return relatedIssues;
     }
 }
