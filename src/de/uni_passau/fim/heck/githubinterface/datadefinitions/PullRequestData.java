@@ -1,8 +1,8 @@
 package de.uni_passau.fim.heck.githubinterface.datadefinitions;
 
-import java.util.Date;
-
 import de.uni_passau.fim.heck.githubinterface.PullRequest;
+
+import java.util.Date;
 
 /**
  * A skeleton object to deserialize a {@link PullRequest}.

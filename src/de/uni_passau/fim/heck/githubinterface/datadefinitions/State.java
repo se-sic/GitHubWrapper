@@ -12,6 +12,8 @@ public enum State {
 
     /**
      * Denote closed Issued and PullRequests.
+     * @see #MERGED
+     * @see #DECLINED
      */
     CLOSED,
 

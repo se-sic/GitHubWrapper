@@ -1,22 +1,11 @@
 package de.uni_passau.fim.heck.githubinterface;
 
-import java.lang.reflect.Type;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParseException;
-import com.google.gson.JsonParser;
+import com.google.gson.*;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.UserData;
+
+import java.lang.reflect.Type;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The UserDataSerializer helps with keeping track of UserData (including the email, which is not provided directly by
@@ -28,6 +17,12 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
     private static Map<String, UserData> guessedUsers = new ConcurrentHashMap<>();
     private final GitHubRepository repo;
 
+    /**
+     * Creates a new UserDataDeserializer for the given repo
+     *
+     * @param repo
+     *         the repo
+     */
     UserDataDeserializer(GitHubRepository repo) {
         this.repo = repo;
     }
