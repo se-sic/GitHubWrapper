@@ -64,7 +64,13 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
         comments.ifPresent(result::addComments);
         events.ifPresent(result::addEvents);
 
-        result.addRelatedCommits(parseCommits(result));
+        List<Commit> commits = parseCommits(result);
+        if (result.isPullRequest) {
+            Optional<String> json = repo.getJSONStringFromURL(src.getAsJsonObject().get("commits_url").getAsString());
+            json.ifPresent(data -> commits.addAll(gson.fromJson(data, new TypeToken<ArrayList<Commit>>(){}.getType())));
+        }
+
+        result.addRelatedCommits(commits);
         result.addRelatedIssues(parseIssues(result, gson));
 
         workingQueue.remove(result.url);
@@ -83,7 +89,7 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
 
         Stream<String> referencedCommits = issue.getEventsList().stream()
                 .filter(eventData -> eventData instanceof EventData.ReferencedEventData)
-                .map(eventData -> ((EventData.ReferencedEventData) eventData).commit_id);
+                .map(eventData -> ((EventData.ReferencedEventData) eventData).commit.getId());
 
         return Stream.concat(Stream.concat(commentCommits, referencedCommits), extractSHA1s(issue.body).stream())
                 .map(hash -> {

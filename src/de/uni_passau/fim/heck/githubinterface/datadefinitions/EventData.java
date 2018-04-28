@@ -1,9 +1,9 @@
 package de.uni_passau.fim.heck.githubinterface.datadefinitions;
 
-import java.util.Date;
-
 import com.google.gson.annotations.SerializedName;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
+
+import java.util.Date;
 
 /**
  * A skeleton for information about Events.
@@ -59,8 +59,8 @@ public abstract class EventData {
     public class ReferencedEventData extends EventData {
 
         /**
-         * The hash of the referenced {@link Commit}
+         * The commit references.
          */
-        public String commit_id;
+        public Commit commit;
     }
 }

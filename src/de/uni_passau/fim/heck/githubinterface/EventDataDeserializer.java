@@ -1,23 +1,27 @@
 package de.uni_passau.fim.heck.githubinterface;
 
+import com.google.gson.*;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
+import de.uni_passau.fim.seibt.gitwrapper.repo.Repository;
+import io.gsonfire.PostProcessor;
+
 import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.TreeMap;
-
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParseException;
-import com.google.gson.JsonSerializationContext;
-import com.google.gson.JsonSerializer;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
+import java.util.logging.Logger;
 
 /**
  * The EventDataDeserializer helps with mapping events to their specific subclasses.
  */
-public class EventDataDeserializer implements JsonDeserializer<EventData>, JsonSerializer<EventData> {
+public class EventDataDeserializer implements JsonDeserializer<EventData>, JsonSerializer<EventData>, PostProcessor<EventData.ReferencedEventData> {
+    private static final Logger LOG = Logger.getLogger(EventDataDeserializer.class.getCanonicalName());
 
     private static Map<String, Class> map = new TreeMap<>();
+    private final Repository repo;
+
+    EventDataDeserializer(Repository repo) {
+        this.repo = repo;
+    }
 
     static {
         map.put("", EventData.DefaultEventData.class);
@@ -41,4 +45,16 @@ public class EventDataDeserializer implements JsonDeserializer<EventData>, JsonS
     public JsonElement serialize(EventData src, Type typeOfSrc, JsonSerializationContext context) {
         return context.serialize(src, src.getClass());
     }
+
+    @Override
+    public void postDeserialize(EventData.ReferencedEventData result, JsonElement src, Gson gson) {
+        String hash = src.getAsJsonObject().get("commit_id").getAsString();
+        result.commit = repo.getCommit(hash).orElseGet(() -> {
+            LOG.warning("Could not get commit for hash " + hash + " in repo " + repo.getName());
+            return null;
+        });
+    }
+
+    @Override
+    public void postSerialize(JsonElement result, EventData.ReferencedEventData src, Gson gson) { }
 }

@@ -85,8 +85,7 @@ public class PullRequest extends Reference {
         // to handle all merged pull requests differently by looking at the parents of the actual merge and using the
         // parent that is not in the tip of the pull request, since that is the commit that was merged into
         if (isMerged()) {
-            return repo.getCommitUnchecked(
-                    getMerge().map(m -> m.commit_id).orElseGet(() -> { LOG.warning("Could not find merge for PR " + id); return ""; }))
+            return getMerge().map(m -> m.commit).orElseGet(() -> { LOG.warning("Could not find merge for PR " + id); return repo.getCommitUnchecked("impossible commit"); })
                     .getParents().orElseGet(() -> { LOG.warning("Could not find parents of the merge of PR " + id); return new ArrayList<>();}).stream()
                     .filter(p -> !p.equals(getTip().orElseGet(() -> { LOG.warning("Could not find tip of PR " + id); return null; })))
                     .findFirst().map(x -> x);
