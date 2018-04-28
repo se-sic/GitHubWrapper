@@ -22,6 +22,9 @@ public class CommitSerializer implements JsonSerializer<Commit>, JsonDeserialize
 
     @Override
     public JsonElement serialize(Commit src, Type typeOfSrc, JsonSerializationContext context) {
+        // make sure lazy initialization has kicked in
+        src.getAuthor();
+
         JsonObject obj = new JsonObject();
         obj.addProperty("author", src.getAuthor());
         obj.addProperty("time", src.getAuthorTime().toString());
