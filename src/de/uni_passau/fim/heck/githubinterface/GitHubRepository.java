@@ -192,17 +192,16 @@ public class GitHubRepository extends Repository {
                     LOG.warning("Encountered invalid JSON: " + json);
                     return null;
                 }
-
-                if (!includePullRequests) {
-                    return data.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList());
-                }
                 return data;
            }).ifPresent(list -> {
                list.sort(Comparator.comparing(issue -> issue.created_at));
                issues = Collections.unmodifiableList(list);
            });
         }
-        return Optional.ofNullable(issues);
+        if (!includePullRequests) {
+            return Optional.of(issues.stream().filter(issueData -> !issueData.isPullRequest).collect(Collectors.toList()));
+        }
+        return Optional.of(issues);
     }
 
     /**
