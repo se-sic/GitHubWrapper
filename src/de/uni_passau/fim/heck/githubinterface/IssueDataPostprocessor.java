@@ -1,5 +1,15 @@
 package de.uni_passau.fim.heck.githubinterface;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
+import de.uni_passau.fim.heck.githubinterface.datadefinitions.State;
+import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
+import de.uni_passau.fim.seibt.gitwrapper.repo.LocalRepository;
+import io.gsonfire.PostProcessor;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -10,16 +20,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.CommentData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.State;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
-import de.uni_passau.fim.seibt.gitwrapper.repo.LocalRepository;
-import io.gsonfire.PostProcessor;
 
 /**
  * The IssueDataPostprocessor extracts additional information from issues and populated IssueData instances with other
@@ -47,10 +47,10 @@ public class IssueDataPostprocessor implements PostProcessor<IssueData> {
         Optional<List<CommentData>> comments = repo.getComments(result);
         Optional<List<EventData>> events = repo.getEvents(result);
 
-        comments.ifPresent(list -> list.forEach(result::addComment));
-        events.ifPresent(list -> list.forEach(result::addEvent));
+        comments.ifPresent(result::addComments);
+        events.ifPresent(result::addEvents);
 
-        parseCommits(result).forEach(result::addRelatedCommit);
+        result.addRelatedCommits(parseCommits(result));
     }
 
     /**

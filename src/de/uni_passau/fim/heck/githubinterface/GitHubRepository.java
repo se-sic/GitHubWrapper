@@ -315,6 +315,7 @@ public class GitHubRepository extends Repository {
                 return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, state, target, commits, pr);
 
             }).filter(Objects::nonNull).collect(Collectors.toList()));
+            pullRequests.sort(Comparator.comparing(pr -> pr.getIssue().created_at));
         });
     }
 
