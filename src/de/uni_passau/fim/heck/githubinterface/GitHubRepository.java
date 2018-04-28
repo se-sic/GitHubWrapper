@@ -264,15 +264,8 @@ public class GitHubRepository extends Repository {
             return;
         }
         LOG.fine("Building new list of PRs");
-        getJSONStringFromPath("/pulls?state=all").ifPresent(json -> {
-            ArrayList<PullRequestData> data;
-            try {
-                data = gson.fromJson(json, new TypeToken<ArrayList<PullRequestData>>() {}.getType());
-            } catch (JsonSyntaxException e) {
-                LOG.warning("Encountered invalid JSON: " + json);
-                return;
-            }
-            pullRequests = data.stream().map(pr -> {
+        getIssues(true).ifPresent(issues -> {
+            pullRequests = issues.stream().filter(x -> x.isPullRequest).map(x -> (PullRequestData) x).map(pr -> {
                 State state = State.getPRState(pr.state, pr.merged_at != null);
 
                 // if the fork was deleted and the PR was rejected or is still open, we cannot get verify the

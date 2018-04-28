@@ -53,7 +53,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      * @see PullRequestData
      * @see PullRequest
      */
-    public boolean isPullRequest;
+    public boolean isPullRequest = false;
 
     /**
      * the text title.
