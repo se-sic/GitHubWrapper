@@ -11,11 +11,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * The UserDataSerializer helps with keeping track of UserData (including the email, which is not provided directly by
  * GitHub).
  */
-public class UserDataDeserializer implements JsonDeserializer<UserData> {
+public class UserDataProcessor implements JsonDeserializer<UserData> {
 
     private static Map<String, UserData> strictUsers = new ConcurrentHashMap<>();
     private static Map<String, UserData> guessedUsers = new ConcurrentHashMap<>();
     private static final JsonParser parser = new JsonParser();
+
     private final GitHubRepository repo;
 
     /**
@@ -24,7 +25,7 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
      * @param repo
      *         the repo
      */
-    UserDataDeserializer(GitHubRepository repo) {
+    UserDataProcessor(GitHubRepository repo) {
         this.repo = repo;
     }
 
@@ -61,7 +62,7 @@ public class UserDataDeserializer implements JsonDeserializer<UserData> {
             user.name = name.getAsString();
         }
 
-        //////EMAIL/////
+        /////EMAIL/////
         user.email = "";
         // first look at profile
         JsonElement email = data.getAsJsonObject().get("email");

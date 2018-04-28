@@ -54,7 +54,7 @@ public class GitHubRepository extends Repository {
     private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
     private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(false);
 
-    private ForkJoinPool threadPool;
+    private final ForkJoinPool threadPool;
 
     /**
      * Create a wrapper around a (local) repository with additional information about GitHub hosted repositories.
@@ -104,18 +104,18 @@ public class GitHubRepository extends Repository {
 
         // read cache and fill up missing issue data
         GsonFireBuilder gfb = new GsonFireBuilder();
-        IssueDataPostprocessor issuePP = new IssueDataPostprocessor(this, apiBaseURL + "/issues/");
+        IssueDataProcessor issueProcessor = new IssueDataProcessor(this, apiBaseURL + "/issues/");
         GsonBuilder gb = gfb.createGsonBuilder();
-        gb.registerTypeAdapter(IssueDataCached.class, issuePP);
-        gb.registerTypeAdapter(Commit.class, new CommitSerializer(this));
-        gb.registerTypeAdapter(EventData.class, new EventDataDeserializer(this));
+        gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
+        gb.registerTypeAdapter(Commit.class, new CommitProcessor(this));
+        gb.registerTypeAdapter(EventData.class, new EventDataProcessor(this));
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
         gb.serializeNulls();
         Gson tempGson = gb.create();
         List<IssueData> issues = new ArrayList<>(tempGson.fromJson(new BufferedReader(new FileReader(issueCache)), new TypeToken<List<IssueDataCached>>() {}.getType()));
-        issuePP.addCache(issues);
+        issueProcessor.addCache(issues);
 
-        issues.forEach(issueData -> issueData.addRelatedIssues(issuePP.parseIssues(issueData, tempGson)));
+        issues.forEach(issueData -> issueData.addRelatedIssues(issueProcessor.parseIssues(issueData, tempGson)));
 
         this.issues = issues;
         getPullRequests();
@@ -149,15 +149,15 @@ public class GitHubRepository extends Repository {
         }
 
         GsonFireBuilder gfb = new GsonFireBuilder();
-        IssueDataPostprocessor issuePP = new IssueDataPostprocessor(this, apiBaseURL + "/issues/");
-        EventDataDeserializer eventDataPP = new EventDataDeserializer(this);
-        gfb.registerPostProcessor(IssueData.class, issuePP);
-        gfb.registerPostProcessor(EventData.ReferencedEventData.class, eventDataPP);
+        IssueDataProcessor issueProcessor = new IssueDataProcessor(this, apiBaseURL + "/issues/");
+        EventDataProcessor eventProcessor = new EventDataProcessor(this);
+        gfb.registerPostProcessor(IssueData.class, issueProcessor);
+        gfb.registerPostProcessor(EventData.ReferencedEventData.class, eventProcessor);
         GsonBuilder gb = gfb.createGsonBuilder();
-        gb.registerTypeAdapter(IssueDataCached.class, issuePP);
-        gb.registerTypeAdapter(Commit.class, new CommitSerializer(this));
-        gb.registerTypeAdapter(UserData.class, new UserDataDeserializer(this));
-        gb.registerTypeAdapter(EventData.class, eventDataPP);
+        gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
+        gb.registerTypeAdapter(EventData.class, eventProcessor);
+        gb.registerTypeAdapter(Commit.class, new CommitProcessor(this));
+        gb.registerTypeAdapter(UserData.class, new UserDataProcessor(this));
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
         gb.serializeNulls();
         gson = gb.create();
@@ -524,9 +524,9 @@ public class GitHubRepository extends Repository {
             Optional<Token> optToken = tokens.stream().filter(Token::isValid).filter(Token::acquire).findFirst();
             if (sleepOnApiLimit() && !optToken.isPresent()) {
                 try {
-                    LOG.info(String.format("Waiting until %s before the next token is available.", tokenResetTime()));
+                    LOG.info(String.format("Waiting until %s before the next token is available.", getTokenResetTime()));
                     tokenWaitList.add(Thread.currentThread());
-                    Thread.sleep(tokenResetTime().minusMillis(System.currentTimeMillis()).toEpochMilli());
+                    Thread.sleep(getTokenResetTime().minusMillis(System.currentTimeMillis()).toEpochMilli());
                 } catch (InterruptedException e) {
                     return getValidToken();
                 }
@@ -559,7 +559,7 @@ public class GitHubRepository extends Repository {
      *
      * @return the earliest time a single API call can succeed
      */
-    public static Instant tokenResetTime() {
+    public static Instant getTokenResetTime() {
         synchronized (tokens) {
             if (tokens.stream().anyMatch(Token::isUsable)) return Instant.now();
             if (tokens.stream().anyMatch(Token::isValid))  return Instant.now().plusSeconds(10);
@@ -586,7 +586,7 @@ public class GitHubRepository extends Repository {
      *
      * @param sleepOnApiLimit
      *         if {@code true}, all API calls will wait until the call blocked due to rate limiting succeeds again
-     * @see #tokenResetTime()
+     * @see #getTokenResetTime()
      */
     public void sleepOnApiLimit(boolean sleepOnApiLimit) {
         synchronized (this.sleepOnApiLimit) {

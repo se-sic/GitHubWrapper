@@ -22,13 +22,15 @@ import java.util.stream.Stream;
  * The IssueDataPostprocessor extracts additional information from issues and populated IssueData instances with other
  * git-related information.
  */
-public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>, PostProcessor<IssueData> {
+public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, PostProcessor<IssueData> {
+
+    private static final JsonParser parser = new JsonParser();
+
     private Map<Integer, IssueData> cache = new ConcurrentHashMap<>();
     private Map<Integer, IssueData> workingQueue = new ConcurrentHashMap<>();
 
     private final GitHubRepository repo;
     private final String issueBaseUrl;
-    private final JsonParser parser = new JsonParser();
 
     /**
      * Creates a new IssueDataPostprocessor for handling Issues specific to the provided GitHubRepository.
@@ -36,7 +38,7 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
      * @param repo
      *         the repository
      */
-    IssueDataPostprocessor(GitHubRepository repo, String issueBaseUrl) {
+    IssueDataProcessor(GitHubRepository repo, String issueBaseUrl) {
         this.repo = repo;
         this.issueBaseUrl = issueBaseUrl;
     }

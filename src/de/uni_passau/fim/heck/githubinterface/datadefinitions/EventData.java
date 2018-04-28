@@ -1,5 +1,6 @@
 package de.uni_passau.fim.heck.githubinterface.datadefinitions;
 
+import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 
@@ -61,6 +62,7 @@ public abstract class EventData {
         /**
          * The commit references.
          */
+        @Expose(deserialize = false)
         public Commit commit;
     }
 }

@@ -8,15 +8,21 @@ import java.lang.reflect.Type;
 import java.util.logging.Logger;
 
 /**
- * The CommitSerializer allows for serialization of Commits to JSON using the GSON library.
+ * The CommitProcessor allows for serialization and deserialization of Commits to JSON using the GSON library.
  */
-public class CommitSerializer implements JsonSerializer<Commit>, JsonDeserializer<Commit> {
+public class CommitProcessor implements JsonSerializer<Commit>, JsonDeserializer<Commit> {
 
-    private static final Logger LOG = Logger.getLogger(CommitSerializer.class.getCanonicalName());
+    private static final Logger LOG = Logger.getLogger(CommitProcessor.class.getCanonicalName());
 
     private final Repository repo;
 
-    CommitSerializer(Repository repo) {
+    /**
+     * Creates a new CommitProcessor for serializing and deserializing {@link Commit Commits}.
+     *
+     * @param repo
+     *         the repo containing the Commits
+     */
+    CommitProcessor(Repository repo) {
         this.repo = repo;
     }
 

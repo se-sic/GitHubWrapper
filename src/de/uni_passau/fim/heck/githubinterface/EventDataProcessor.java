@@ -11,15 +11,22 @@ import java.util.TreeMap;
 import java.util.logging.Logger;
 
 /**
- * The EventDataDeserializer helps with mapping events to their specific subclasses.
+ * The EventDataProcessor helps with mapping events to their specific subclasses and filling fields that cannot be
+ * filled directly from the JSON
  */
-public class EventDataDeserializer implements JsonDeserializer<EventData>, JsonSerializer<EventData>, PostProcessor<EventData.ReferencedEventData> {
-    private static final Logger LOG = Logger.getLogger(EventDataDeserializer.class.getCanonicalName());
+class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<EventData>, PostProcessor<EventData.ReferencedEventData> {
+    private static final Logger LOG = Logger.getLogger(EventDataProcessor.class.getCanonicalName());
 
     private static Map<String, Class> map = new TreeMap<>();
     private final Repository repo;
 
-    EventDataDeserializer(Repository repo) {
+    /**
+     * Creates a new EventDataProcessor for the given repo.
+     *
+     * @param repo
+     *         the repo
+     */
+    EventDataProcessor(Repository repo) {
         this.repo = repo;
     }
 

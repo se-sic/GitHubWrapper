@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 import de.uni_passau.fim.heck.githubinterface.GitHubRepository;
-import de.uni_passau.fim.heck.githubinterface.IssueDataPostprocessor;
+import de.uni_passau.fim.heck.githubinterface.IssueDataProcessor;
 import de.uni_passau.fim.heck.githubinterface.PullRequest;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 
@@ -100,7 +100,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *
      * @param commits
      *         the Commit list
-     * @see IssueDataPostprocessor#parseCommits(IssueData)
+     * @see IssueDataProcessor#parseCommits(IssueData)
      */
     public void addRelatedCommits(List<Commit> commits) {
         commits.sort(Comparator.comparing(Commit::getAuthorTime));
@@ -112,7 +112,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *
      * @param issues
      *         the issue.
-     * @see IssueDataPostprocessor#parseIssues(IssueData, Gson)
+     * @see IssueDataProcessor#parseIssues(IssueData, Gson)
      */
     public void addRelatedIssues(List<IssueData> issues) {
         issues.sort(Comparator.comparing(issue -> issue.created_at));
