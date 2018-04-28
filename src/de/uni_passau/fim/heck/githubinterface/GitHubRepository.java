@@ -107,7 +107,7 @@ public class GitHubRepository extends Repository {
         gb.serializeNulls();
         Gson tempGson = gb.create();
         List<IssueData> issues = new ArrayList<>(tempGson.fromJson(new BufferedReader(new FileReader(issueCache)), new TypeToken<List<IssueDataCached>>() {}.getType()));
-        IssueDataPostprocessor.addCache(issues);
+        issuePP.addCache(issues);
 
         issues.forEach(issueData -> issueData.addRelatedIssues(issuePP.parseIssues(issueData, tempGson)));
 

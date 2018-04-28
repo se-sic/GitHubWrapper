@@ -67,9 +67,10 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     @SerializedName(value = "url", alternate = {"html_url"})
     public String url;
 
-    private List<CommentData> commentsList = new ArrayList<>();
-    private List<EventData> eventsList = new ArrayList<>();
-    private List<Commit> relatedCommits = new ArrayList<>();
+    private List<CommentData> commentsList;
+    private List<EventData> eventsList;
+    private List<Commit> relatedCommits;
+    // we serialize this list manually, since it may contain circles and even if not adds a lot of repetitive data
     private transient List<IssueData> relatedIssues = new ArrayList<>();
 
     /**
@@ -152,5 +153,18 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      */
     public List<IssueData> getRelatedIssues() {
         return relatedIssues;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof IssueData)) return false;
+        IssueData issueData = (IssueData) o;
+        return Objects.equals(url, issueData.url);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(url);
     }
 }

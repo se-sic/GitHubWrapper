@@ -10,6 +10,7 @@ import io.gsonfire.PostProcessor;
 
 import java.lang.reflect.Type;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -22,8 +23,8 @@ import java.util.stream.Stream;
  * git-related information.
  */
 public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>, PostProcessor<IssueData> {
-    private static Map<String, IssueData> cache = new HashMap<>();
-    private static Map<String, IssueData> workingQueue = new HashMap<>();
+    private Map<Integer, IssueData> cache = new ConcurrentHashMap<>();
+    private Map<Integer, IssueData> workingQueue = new ConcurrentHashMap<>();
 
     private final GitHubRepository repo;
     private final String issueBaseUrl;
@@ -42,21 +43,22 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
 
     @Override
     public void postDeserialize(IssueData result, JsonElement src, Gson gson) {
-        // check if currently worked on, to break cyclic dependencies
-        IssueData workingOn = workingQueue.get(result.url);
+        // check if currently worked on, to return early and break cyclic dependencies
+        IssueData workingOn = workingQueue.get(result.number);
         if (workingOn != null) return;
-        workingQueue.put(result.url, result);
-        cache.put(result.url, result);
-
-        result.state = State.getFromString(src.getAsJsonObject().get("state").getAsString());
+        workingQueue.put(result.number, result);
+        cache.put(result.number, result);
 
         IssueData lookup = result;
-        JsonElement issueSource = src;
         if (result.isPullRequest) {
-            issueSource =  parser.parse(repo.getJSONStringFromURL(src.getAsJsonObject().get("issue_url").getAsString())
+            // we need the actual issue data back, because events and comments are missing in an pr
+            JsonElement issueSource = parser.parse(repo.getJSONStringFromURL(src.getAsJsonObject().get("issue_url").getAsString())
                     .orElseThrow(() -> new JsonParseException("Could not get Issue data for this PR: " + result.url)));
             lookup = gson.fromJson(issueSource, new TypeToken<IssueDataCached>() {}.getType());
         }
+
+        // fill in missing data
+        result.state = State.getFromString(src.getAsJsonObject().get("state").getAsString());
 
         Optional<List<CommentData>> comments = repo.getComments(lookup);
         Optional<List<EventData>> events = repo.getEvents(lookup);
@@ -73,7 +75,7 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
         result.addRelatedCommits(commits);
         result.addRelatedIssues(parseIssues(result, gson));
 
-        workingQueue.remove(result.url);
+        workingQueue.remove(result.number);
     }
 
     /**
@@ -129,6 +131,12 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
 
         return Stream.concat(commentIssues, extractHashtags(issue.body).stream()).map(
                 link -> {
+                    // again, short-circuit, if he have a cache hit
+                    IssueData cached = cache.get(Integer.parseInt(link));
+                    if (cached != null) {
+                        return Optional.of(cached);
+                    }
+
                     Optional<String> refIssue = repo.getJSONStringFromURL(issueBaseUrl + link);
                     return refIssue.map(s -> (IssueData) gson.fromJson(s, new TypeToken<IssueDataCached>() {}.getType()));
                 })
@@ -194,32 +202,40 @@ public class IssueDataPostprocessor implements JsonDeserializer<IssueDataCached>
 
     @Override
     public IssueDataCached deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
-        JsonElement url = json.getAsJsonObject().get("html_url");
-        if (url == null) {
-            url = json.getAsJsonObject().get("url");
-        }
-        IssueData cached = cache.get(url.getAsString());
+        int number = json.getAsJsonObject().get("number").getAsJsonPrimitive().getAsNumber().intValue();
+        IssueData cached = cache.get(number);
+        // check cache, and short circuit
         if (cached != null) {
             return cached;
         }
 
+        // check if pr directly from github
         JsonElement pr = json.getAsJsonObject().get("pull_request");
         if(pr != null) {
-            JsonElement finalUrl = url;
+            // get additional data
             String data = repo.getJSONStringFromURL(pr.getAsJsonObject().get("url").getAsString())
-                    .orElseThrow(() -> new JsonParseException("Could not get PullRequest data for this issue: " + finalUrl.toString()));
+                    .orElseThrow(() -> new JsonParseException("Could not get PullRequest data for issue: " + number + " in repo " + repo));
             return context.deserialize(parser.parse(data), new TypeToken<PullRequestData>() {}.getType());
         }
 
+        // check if pr from local dump, we then already have all data
         pr = json.getAsJsonObject().get("isPullRequest");
         if (pr != null && pr.getAsBoolean()) {
             return context.deserialize(json, new TypeToken<PullRequestData>() {}.getType());
         }
 
+        // normal issue from github or dump
         return context.deserialize(json, new TypeToken<IssueData>() {}.getType());
     }
 
-    static void addCache(List<IssueData> protoCache) {
-        cache.putAll(protoCache.stream().collect(Collectors.toMap(issue -> issue.url, issue -> issue)));
+    /**
+     * Manually adds Issues to the cache used for short-circuiting deserialization.
+     *
+     * @param protoCache
+     *         a list of prototype IssueData elements ({@link IssueData#commentsList}, {@link IssueData#eventsList},
+     *         {@link IssueData#relatedCommits} and {@link IssueData#relatedIssues} are allowed to be missing)
+     */
+    void addCache(List<IssueData> protoCache) {
+        cache.putAll(protoCache.stream().collect(Collectors.toMap(issue -> issue.number, issue -> issue)));
     }
 }
