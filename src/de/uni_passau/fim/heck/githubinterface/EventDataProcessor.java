@@ -1,8 +1,8 @@
 package de.uni_passau.fim.heck.githubinterface;
 
 import com.google.gson.*;
+import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Repository;
 import io.gsonfire.PostProcessor;
 
 import java.lang.reflect.Type;
@@ -18,7 +18,7 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
     private static final Logger LOG = Logger.getLogger(EventDataProcessor.class.getCanonicalName());
 
     private static Map<String, Class> map = new TreeMap<>();
-    private final Repository repo;
+    private final GitHubRepository repo;
 
     /**
      * Creates a new EventDataProcessor for the given repo.
@@ -26,7 +26,7 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
      * @param repo
      *         the repo
      */
-    EventDataProcessor(Repository repo) {
+    EventDataProcessor(GitHubRepository repo) {
         this.repo = repo;
     }
 
@@ -56,10 +56,10 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
     @Override
     public void postDeserialize(EventData.ReferencedEventData result, JsonElement src, Gson gson) {
         String hash = src.getAsJsonObject().get("commit_id").getAsString();
-        result.commit = repo.getCommit(hash).orElseGet(() -> {
-            LOG.warning("Could not get commit for hash " + hash + " in repo " + repo.getName());
-            return null;
-        });
+        String commitInfo = repo.getJSONStringFromURL(src.getAsJsonObject().get("commit_url").getAsString()).get();
+        String message = ((JsonElement) gson.fromJson(commitInfo, new TypeToken<JsonElement>() {}.getType()))
+                .getAsJsonObject().get("commit").getAsJsonObject().get("message").getAsString();
+        result.commit = repo.getCommitByHashOrMessage(hash, message).orElse(repo.getCommitUnchecked(hash));
     }
 
     @Override

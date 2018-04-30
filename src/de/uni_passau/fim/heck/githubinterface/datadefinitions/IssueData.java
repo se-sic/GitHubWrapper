@@ -9,6 +9,7 @@ import de.uni_passau.fim.heck.githubinterface.PullRequest;
 import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
 
 import java.util.*;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 /**
@@ -73,6 +74,8 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     // we serialize this list manually, since it may contain circles and even if not adds a lot of repetitive data
     private transient List<IssueData> relatedIssues = new ArrayList<>();
 
+    private boolean frozen;
+
     /**
      * Adds a list of Comments to this Issue.
      *
@@ -80,8 +83,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *         the Comment list
      */
     public void addComments(List<CommentData> comments) {
-        comments.sort(Comparator.comparing((comment) -> comment.created_at));
-        commentsList = Collections.unmodifiableList(comments);
+        commentsList = comments;
     }
 
     /**
@@ -91,8 +93,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *         the Event list.
      */
     public void addEvents(List<EventData> events) {
-        events.sort(Comparator.comparing(event -> event.created_at));
-        eventsList = Collections.unmodifiableList(events);
+        eventsList = events;
     }
 
     /**
@@ -103,8 +104,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      * @see IssueDataProcessor#parseCommits(IssueData)
      */
     public void addRelatedCommits(List<Commit> commits) {
-        commits.sort(Comparator.comparing(Commit::getAuthorTime));
-        relatedCommits = Collections.unmodifiableList(commits);
+        relatedCommits = commits;
     }
 
     /**
@@ -115,8 +115,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      * @see IssueDataProcessor#parseIssues(IssueData, Gson)
      */
     public void addRelatedIssues(List<IssueData> issues) {
-        issues.sort(Comparator.comparing(issue -> issue.created_at));
-        relatedIssues = Collections.unmodifiableList(issues);
+        relatedIssues = issues;
     }
 
     /**
@@ -153,6 +152,24 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      */
     public List<IssueData> getRelatedIssues() {
         return relatedIssues;
+    }
+
+    /**
+     * Before accessing data for the first time, sort and lock all data once.
+     */
+    public void freeze() {
+        if (frozen) return;
+
+        eventsList = Collections.unmodifiableList(eventsList.stream()
+                .sorted(Comparator.comparing(event -> event.created_at)).collect(Collectors.toList()));
+        commentsList = Collections.unmodifiableList(commentsList.stream()
+                .sorted(Comparator.comparing((comment) -> comment.created_at)).collect(Collectors.toList()));
+        relatedIssues = Collections.unmodifiableList(relatedIssues.stream()
+                .sorted(Comparator.comparing(issue -> issue.created_at)).collect(Collectors.toList()));
+        relatedCommits = Collections.unmodifiableList(relatedCommits.stream()
+                // Remove invalid commits before they cause problems
+                .filter(c -> c.getAuthorTime() != null)
+                .sorted(Comparator.comparing(Commit::getAuthorTime)).collect(Collectors.toList()));
     }
 
     @Override

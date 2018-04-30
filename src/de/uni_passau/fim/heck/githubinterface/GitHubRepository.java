@@ -10,9 +10,9 @@ import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
 import de.uni_passau.fim.seibt.gitwrapper.repo.*;
 import io.gsonfire.GsonFireBuilder;
 import org.apache.http.Header;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 
 import java.io.*;
@@ -22,12 +22,13 @@ import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -44,12 +45,15 @@ public class GitHubRepository extends Repository {
     private final GitWrapper git;
     private final Repository repo;
     private final Gson gson;
-    private final HttpClient hc;
+    private final CloseableHttpClient hc;
 
+    private final Pattern commitPattern = Pattern.compile("([0-9a-f]{40})\n(.*?)\nhash=", Pattern.DOTALL);
     private final String apiBaseURL;
     private final File dir;
     private List<PullRequest> pullRequests;
     private List<IssueData> issues;
+    private Map<String, Optional<Commit>> hashReplacement = new ConcurrentHashMap<>();
+    private Map<String, Commit> unknownCommits = new ConcurrentHashMap<>();
 
     private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
     private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(false);
@@ -118,7 +122,7 @@ public class GitHubRepository extends Repository {
         issues.forEach(issueData -> issueData.addRelatedIssues(issueProcessor.parseIssues(issueData, tempGson)));
 
         this.issues = issues;
-        getPullRequests();
+//        getPullRequests();
     }
 
     /**
@@ -200,13 +204,11 @@ public class GitHubRepository extends Repository {
                             list.parallelStream()
                                     .map(element -> (IssueData) (gson.fromJson(element, new  TypeToken<IssueDataCached>() {}.getType())))
                                     .collect(Collectors.toList());
-                    data = threadPool.submit(converter).get();
-                } catch (InterruptedException e) {
-                    LOG.warning("Encountered interruption while processing JSON");
-                    return null;
-                } catch (ExecutionException e) {
-                    LOG.warning("Encountered exception while processing JSON: " + e);
-                    return null;
+                    data = threadPool.submit(converter).join();
+
+                    // freeze the issues
+                    threadPool.submit(() -> data.parallelStream().forEach(IssueData::freeze));
+
                 } catch (JsonSyntaxException e) {
                     LOG.warning("Encountered invalid JSON: " + json);
                     return null;
@@ -323,7 +325,7 @@ public class GitHubRepository extends Repository {
         }
         LOG.fine("Building new list of PRs");
         getIssues(true).ifPresent(issues -> {
-            pullRequests = issues.stream().filter(x -> x.isPullRequest).map(x -> (PullRequestData) x).map(pr -> {
+            Callable<List<PullRequest>> converter = () -> issues.parallelStream().filter(x -> x.isPullRequest).map(x -> (PullRequestData) x).map(pr -> {
                 State state = State.getPRState(pr.state, pr.merged_at != null);
 
                 // if the fork was deleted and the PR was rejected or is still open, we cannot get verify the
@@ -370,8 +372,8 @@ public class GitHubRepository extends Repository {
                     return new PullRequest(this, target, commits, pr);
                 }
                 return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, state, target, commits, pr);
-            }).filter(Objects::nonNull).collect(Collectors.toList());
-            pullRequests.sort(Comparator.comparing(pr -> pr.getIssue().created_at));
+            }).filter(Objects::nonNull).sorted(Comparator.comparing(pr -> pr.getIssue().created_at)).collect(Collectors.toList());
+            pullRequests = threadPool.submit(converter).join();
         });
     }
 
@@ -448,14 +450,14 @@ public class GitHubRepository extends Repository {
                 }
                 token = optToken.get();
 
-                do {
-                    HttpResponse resp = hc.execute(new HttpGet(url + (token.getToken().isEmpty() ? "" : "&access_token=" + token.getToken())));
 
-                    if (resp.getStatusLine().getStatusCode() != 200) {
-                        LOG.warning(String.format("Could not access api method: %s returned %s", url, resp.getStatusLine()));
-                        resp.getEntity().getContent().close();
-                        return Optional.empty();
+                do {
+                    if (!token.getToken().isPresent()) {
+                        LOG.warning(String.format("Tried to use token %s not held by thread %s", token, Thread.currentThread()));
+                        // return Optional.empty();
                     }
+
+                    CloseableHttpResponse resp = hc.execute(new HttpGet(url + (token.getToken().get().isEmpty() ? "" : "&access_token=" + token.getToken().get())));
 
                     Map<String, List<String>> headers = Arrays.stream(resp.getAllHeaders())
                             .collect(Collectors.toMap(Header::getName,
@@ -466,28 +468,42 @@ public class GitHubRepository extends Repository {
                     Instant rateLimitReset = Instant.ofEpochMilli(Long.parseLong(headers.get("X-RateLimit-Reset").get(0)) * 1000);
                     token.update(rateLimitRemaining, rateLimitReset);
 
-                    Optional<String> next = Arrays.stream(headers.getOrDefault("Link",
-                            new ArrayList<>(Collections.singleton(""))
-                    ).get(0).split(","))
-                            .filter(link -> link.contains("next")).findFirst();
-                    try (BufferedReader buffer = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()))) {
-                        data.add(buffer.lines().collect(Collectors.joining("\n")));
-                    }
-                    resp.getEntity().getContent().close();
-
-                    // if this call was the last possible, fetch a new token for the next round
+                    // if this call could have been the last possible, fetch a new token for the next round
                     if (!token.isUsable()) {
                         releaseToken(token);
                         optToken = getValidToken();
                         if (!optToken.isPresent()) {
                             LOG.warning("No token available");
                             token = null;
+                            resp.close();
                             return Optional.empty();
                         }
                         token = optToken.get();
                     }
 
+                    if (resp.getStatusLine().getStatusCode() != 200) {
+                        LOG.warning(String.format("Could not access api method: %s returned %s", url, resp.getStatusLine()));
+                        resp.close();
+
+                        // probably in rate limit, lets try again with the new token
+                        if (resp.getStatusLine().getStatusCode() == 403)
+                            continue;
+
+                        return Optional.empty();
+                    }
+
+                    // read content
+                    try (BufferedReader buffer = new BufferedReader(new InputStreamReader(resp.getEntity().getContent()))) {
+                        data.add(buffer.lines().collect(Collectors.joining("\n")));
+                    }
+
                     // check, if another page is available
+                    Optional<String> next = Arrays.stream(headers.getOrDefault("Link",
+                            new ArrayList<>(Collections.singleton(""))
+                    ).get(0).split(","))
+                            .filter(link -> link.contains("next")).findFirst();
+                    resp.close();
+
                     if (!next.isPresent()) break;
                     String nextUrl = next.get();
                     url = nextUrl.substring(nextUrl.indexOf("<") + 1, nextUrl.indexOf(">"));
@@ -521,7 +537,15 @@ public class GitHubRepository extends Repository {
      */
     private Optional<Token> getValidToken() {
         synchronized (tokens) {
-            Optional<Token> optToken = tokens.stream().filter(Token::isValid).filter(Token::acquire).findFirst();
+            // short-circuit if wa already have a valid token
+            Optional<Token> optToken = tokens.stream().filter(Token::isHeld).filter(Token::isValid).findFirst();
+            if (optToken.isPresent()) {
+                optToken.get().acquire();
+                return optToken;
+            }
+
+            // acquire a token or, if allowed wait until one becomes available
+            optToken = tokens.stream().filter(Token::isValid).filter(Token::acquire).findFirst();
             if (sleepOnApiLimit() && !optToken.isPresent()) {
                 try {
                     LOG.info(String.format("Waiting until %s before the next token is available.", getTokenResetTime()));
@@ -532,7 +556,7 @@ public class GitHubRepository extends Repository {
                 }
                 return getValidToken();
             }
-            optToken.ifPresent(token -> LOG.fine(Thread.currentThread() + " acquired token " + token));
+            optToken.ifPresent(token -> LOG.finest(Thread.currentThread() + " acquired token " + token));
             return optToken;
         }
     }
@@ -545,7 +569,7 @@ public class GitHubRepository extends Repository {
      */
     private void releaseToken(Token token) {
         token.release();
-        LOG.fine(Thread.currentThread() + " released token " + token);
+        LOG.finest(Thread.currentThread() + " released token " + token);
         Thread next = tokenWaitList.poll();
         if (next != null) {
             LOG.fine("Waking up " + next + " waiting on token");
@@ -642,6 +666,19 @@ public class GitHubRepository extends Repository {
         return repo;
     }
 
+    Optional<Commit> getCommitByHashOrMessage(String sha1, String message) {
+        Optional<Commit> exact = getCommit(sha1);
+        if (exact.isPresent()) {
+            return exact;
+        }
+
+        if (!allowGuessing()) {
+            return Optional.empty();
+        }
+
+        return Optional.empty();
+    }
+
     @Override
     public boolean cleanup(String... retain) {
         return repo.cleanup(retain);
@@ -673,8 +710,8 @@ public class GitHubRepository extends Repository {
     }
 
     @Override
-    protected Commit getCommitUnchecked(String id) {
-        return getCommit(id).get();
+    public Commit getCommitUnchecked(String id) {
+        return unknownCommits.computeIfAbsent(id, repo::getCommitUnchecked);
     }
 
     @Override

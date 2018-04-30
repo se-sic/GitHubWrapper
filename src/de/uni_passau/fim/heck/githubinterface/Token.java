@@ -1,6 +1,7 @@
 package de.uni_passau.fim.heck.githubinterface;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -47,8 +48,8 @@ public class Token {
      *
      * @return the token
      */
-    String getToken() {
-        return token;
+    Optional<String> getToken() {
+        return lock.isHeldByCurrentThread() ? Optional.of(token) : Optional.empty();
     }
 
     /**
@@ -79,7 +80,7 @@ public class Token {
      * @return {@code true}, if one call can be made, or the token can be reset
      */
     boolean isValid() {
-        return calls > 0 || Instant.now().isAfter(resetTime);
+        return calls > 1 || Instant.now().isAfter(resetTime);
     }
 
     /**
@@ -91,6 +92,15 @@ public class Token {
      */
     boolean isUsable() {
         return (!lock.isLocked() || lock.isHeldByCurrentThread()) && isValid();
+    }
+
+    /**
+     * Checks if the token is held by the caller.
+     *
+     * @return {@code true}, iff the the calling thread is already holding the token
+     */
+    boolean isHeld() {
+        return lock.isHeldByCurrentThread();
     }
 
     /**
