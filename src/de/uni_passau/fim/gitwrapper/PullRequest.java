@@ -1,11 +1,4 @@
-package de.uni_passau.fim.heck.githubinterface;
-
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.IssueData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.PullRequestData;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.State;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Reference;
+package de.uni_passau.fim.gitwrapper;
 
 import java.util.*;
 import java.util.logging.Logger;

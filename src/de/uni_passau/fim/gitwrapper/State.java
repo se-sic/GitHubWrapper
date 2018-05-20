@@ -1,4 +1,4 @@
-package de.uni_passau.fim.heck.githubinterface.datadefinitions;
+package de.uni_passau.fim.gitwrapper;
 
 /**
  * Enumeration of states an Issue or PullRequest can be in.

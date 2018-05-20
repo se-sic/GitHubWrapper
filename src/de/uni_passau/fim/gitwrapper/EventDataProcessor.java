@@ -1,14 +1,18 @@
-package de.uni_passau.fim.heck.githubinterface;
-
-import com.google.gson.*;
-import com.google.gson.reflect.TypeToken;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.EventData;
-import io.gsonfire.PostProcessor;
+package de.uni_passau.fim.gitwrapper;
 
 import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.logging.Logger;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonSerializationContext;
+import com.google.gson.JsonSerializer;
+import io.gsonfire.PostProcessor;
 
 /**
  * The EventDataProcessor helps with mapping events to their specific subclasses and filling fields that cannot be
@@ -40,12 +44,7 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
 
     @Override
     public EventData deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
-        String type = json.getAsJsonObject().get("event").getAsString();
-        Class c = map.get(type);
-        if (c == null) {
-            c = map.get("");
-        }
-        return context.deserialize(json, c);
+        return context.deserialize(json, map.getOrDefault(json.getAsJsonObject().get("event").getAsString(), map.get("")));
     }
 
     @Override
@@ -56,10 +55,10 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
     @Override
     public void postDeserialize(EventData.ReferencedEventData result, JsonElement src, Gson gson) {
         String hash = src.getAsJsonObject().get("commit_id").getAsString();
-        String commitInfo = repo.getJSONStringFromURL(src.getAsJsonObject().get("commit_url").getAsString()).get();
-        String message = ((JsonElement) gson.fromJson(commitInfo, new TypeToken<JsonElement>() {}.getType()))
-                .getAsJsonObject().get("commit").getAsJsonObject().get("message").getAsString();
-        result.commit = repo.getCommitByHashOrMessage(hash, message).orElse(repo.getCommitUnchecked(hash));
+        result.commit = repo.getGithubCommit(hash).orElseGet(() -> {
+            LOG.warning("Found commit unknown to GitHub and local git repo: " + hash);
+            return null;
+        });
     }
 
     @Override

@@ -1,72 +1,35 @@
-package de.uni_passau.fim.heck.githubinterface.datadefinitions;
+package de.uni_passau.fim.gitwrapper;
+
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 
 import com.google.gson.Gson;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
-import de.uni_passau.fim.heck.githubinterface.GitHubRepository;
-import de.uni_passau.fim.heck.githubinterface.IssueDataProcessor;
-import de.uni_passau.fim.heck.githubinterface.PullRequest;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
-
-import java.util.*;
-import java.util.stream.Collectors;
-import javax.annotation.Nullable;
 
 /**
  * Data object for information about Issues.
  */
 public class IssueData implements GitHubRepository.IssueDataCached {
 
-    /**
-     * The number of the issue (referenced with {@code #nr}).
-     */
-    public int number;
+    int number;
+    String title;
+    String body;
+    UserData user;
 
-    /**
-     * Data about the User that created the issue.
-     */
-    public UserData user;
+    @Expose(deserialize = false) State state;
+    OffsetDateTime created_at;
+    @Nullable OffsetDateTime closed_at;
 
-    /**
-     * Information about the state of the issue.
-     */
-    @Expose(deserialize = false)
-    public State state;
+    boolean isPullRequest = false;
 
-    /**
-     * The date and time the issue was created.
-     */
-    public Date created_at;
-
-    /**
-     * The date and time the issue was closed, or null if it is still open.
-     */
-    @Nullable
-    public Date closed_at;
-
-    /**
-     * {@code true} if it is a PullRequest.
-     *
-     * @see PullRequestData
-     * @see PullRequest
-     */
-    public boolean isPullRequest = false;
-
-    /**
-     * the text title.
-     */
-    public String title;
-
-    /**
-     * The text body.
-     */
-    public String body;
-
-    /**
-     * The HTML URL to this issue.
-     */
-    @SerializedName(value = "url", alternate = {"html_url"})
-    public String url;
+    @SerializedName(value = "url", alternate = {"html_url"}) String url;
 
     private List<CommentData> commentsList;
     private List<EventData> eventsList;
@@ -74,7 +37,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     // we serialize this list manually, since it may contain circles and even if not adds a lot of repetitive data
     private transient List<IssueData> relatedIssues = new ArrayList<>();
 
-    private boolean frozen;
+    private transient boolean frozen;
 
     /**
      * Adds a list of Comments to this Issue.
@@ -170,6 +133,73 @@ public class IssueData implements GitHubRepository.IssueDataCached {
                 // Remove invalid commits before they cause problems
                 .filter(c -> c.getAuthorTime() != null)
                 .sorted(Comparator.comparing(Commit::getAuthorTime)).collect(Collectors.toList()));
+    }
+
+    /**
+     * The number of the issue (referenced with {@code #nr}).
+     */
+    public int getNumber() {
+        return number;
+    }
+
+    /**
+     * Data about the User that created the issue.
+     */
+    public UserData getUser() {
+        return user;
+    }
+
+    /**
+     * Information about the state of the issue.
+     */
+    public State getState() {
+        return state;
+    }
+
+    /**
+     * The date and time the issue was created.
+     */
+    public OffsetDateTime getCreateDate() {
+        return created_at;
+    }
+
+    /**
+     * The date and time the issue was closed, or null if it is still open.
+     */
+    @Nullable
+    public OffsetDateTime getCloseDate() {
+        return closed_at;
+    }
+
+    /**
+     * {@code true} if it is a PullRequest.
+     *
+     * @see PullRequestData
+     * @see PullRequest
+     */
+    public boolean isPullRequest() {
+        return isPullRequest;
+    }
+
+    /**
+     * the text title.
+     */
+    public String getTitle() {
+        return title;
+    }
+
+    /**
+     * The text body.
+     */
+    public String getBody() {
+        return body;
+    }
+
+    /**
+     * The HTML URL to this issue.
+     */
+    public String getUrl() {
+        return url;
     }
 
     @Override

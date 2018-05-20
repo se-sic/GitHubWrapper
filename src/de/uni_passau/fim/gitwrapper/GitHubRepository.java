@@ -1,35 +1,50 @@
-package de.uni_passau.fim.heck.githubinterface;
+package de.uni_passau.fim.gitwrapper;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonSyntaxException;
-import com.google.gson.reflect.TypeToken;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.*;
-import de.uni_passau.fim.seibt.gitwrapper.process.ProcessExecutor;
-import de.uni_passau.fim.seibt.gitwrapper.repo.*;
-import io.gsonfire.GsonFireBuilder;
-import org.apache.http.Header;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-
-import java.io.*;
-import java.nio.file.Path;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
-import java.util.*;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonSyntaxException;
+import com.google.gson.reflect.TypeToken;
+import de.uni_passau.fim.processexecutor.ProcessExecutor;
+import io.gsonfire.GsonFireBuilder;
+import org.apache.http.Header;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
 
 /**
  * A GitHubRepository wraps a (local) Repository to give access to the GitHub API to provide {@link PullRequestData} and
@@ -42,40 +57,39 @@ public class GitHubRepository extends Repository {
     private static final Set<Token> tokens = new HashSet<>();
     private static final Queue<Thread> tokenWaitList = new ConcurrentLinkedQueue<>();
 
-    private final GitWrapper git;
-    private final Repository repo;
     private final Gson gson;
     private final CloseableHttpClient hc;
 
     private final Pattern commitPattern = Pattern.compile("([0-9a-f]{40})\n(.*?)\nhash=", Pattern.DOTALL);
     private final String apiBaseURL;
-    private final File dir;
     private List<PullRequest> pullRequests;
     private List<IssueData> issues;
-    private Map<String, Optional<Commit>> hashReplacement = new ConcurrentHashMap<>();
     private Map<String, Commit> unknownCommits = new ConcurrentHashMap<>();
+    private Map<String, Optional<Commit>> checkedHashes = new ConcurrentHashMap<>();
 
     private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
     private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(false);
 
     private final ForkJoinPool threadPool;
 
+    // TODO fix Docu
+
     /**
      * Create a wrapper around a (local) repository with additional information about GitHub hosted repositories.
      *
-     * @param repo
+     * @param url
      *         the local Repository
      * @param git
      *         the GitWrapper instance to use
      */
-    public GitHubRepository(Repository repo, GitWrapper git) {
-        this(repo, git, "");
+    public GitHubRepository(String url, File dir, GitWrapper git) {
+        this(url, dir, git, "");
     }
 
     /**
      * Create a wrapper around a (local) Repository with additional information about GitHub hosted repositories.
      *
-     * @param repo
+     * @param url
      *         the local repository
      * @param git
      *         the GitWrapper instance to use
@@ -84,15 +98,15 @@ public class GitHubRepository extends Repository {
      *         (see  <a href="https://github.com/settings/tokens">https://github.com/settings/tokens</a>) for
      *         information about creating such tokens)
      */
-    public GitHubRepository(Repository repo, GitWrapper git, String oauthToken) {
-        this(repo, git, Collections.singletonList(oauthToken));
+    public GitHubRepository(String url, File dir, GitWrapper git, String oauthToken) {
+        this(url, dir, git, Collections.singletonList(oauthToken));
     }
 
     /**
      * Creates a new GitHubRepository based on the given repo. The given file must contain a JSON dump of the list of
      * corresponding issues from GitHub.
      *
-     * @param repo
+     * @param url
      *         the repo
      * @param git
      *         the GitWrapper
@@ -103,19 +117,20 @@ public class GitHubRepository extends Repository {
      * @throws FileNotFoundException
      *         if {@code issueCache} is not found
      */
-    public GitHubRepository(Repository repo, GitWrapper git, List<String> oauthToken, File issueCache) throws FileNotFoundException {
-        this(repo, git, oauthToken);
+    public GitHubRepository(String url, File dir, GitWrapper git, List<String> oauthToken, File issueCache) throws FileNotFoundException {
+        this(url, dir, git, oauthToken);
 
-        // read cache and fill up missing issue data
-        GsonFireBuilder gfb = new GsonFireBuilder();
         IssueDataProcessor issueProcessor = new IssueDataProcessor(this, apiBaseURL + "/issues/");
-        GsonBuilder gb = gfb.createGsonBuilder();
+        GsonBuilder gb = new GsonFireBuilder().createGsonBuilder();
+        gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, new UserDataProcessor(this)));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
-        gb.registerTypeAdapter(Commit.class, new CommitProcessor(this));
         gb.registerTypeAdapter(EventData.class, new EventDataProcessor(this));
+        gb.registerTypeAdapter(OffsetDateTime.class, new OffsetDateTimerProcessor());
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
         gb.serializeNulls();
         Gson tempGson = gb.create();
+
+        // read cache and fill up missing issue data
         List<IssueData> issues = new ArrayList<>(tempGson.fromJson(new BufferedReader(new FileReader(issueCache)), new TypeToken<List<IssueDataCached>>() {}.getType()));
         issueProcessor.addCache(issues);
 
@@ -128,7 +143,7 @@ public class GitHubRepository extends Repository {
     /**
      * Create a wrapper around a (local) Repository with additional information about GitHub hosted repositories.
      *
-     * @param repo
+     * @param url
      *         the local repository
      * @param git
      *         the GitWrapper instance to use
@@ -137,16 +152,13 @@ public class GitHubRepository extends Repository {
      *         (see  <a href="https://github.com/settings/tokens">https://github.com/settings/tokens</a>) for
      *         information about creating such tokens)
      */
-    public GitHubRepository(Repository repo, GitWrapper git, List<String> oauthToken) {
-        this.repo = repo;
-        String repoUrl = repo.getUrl();
-        if (repoUrl.contains("git@")) {
-            repoUrl = repoUrl.replace(":", "/").replace("git@", "https://");
+    public GitHubRepository(String url, File dir, GitWrapper git, List<String> oauthToken) {
+        super(git, url, dir);
+        if (url.contains("git@")) {
+            url = url.replace(":", "/").replace("git@", "https://");
         }
-        apiBaseURL = repoUrl.replace(".git", "").replace("//github.com/", "//api.github.com/repos/");
+        apiBaseURL = url.replace(".git", "").replace("//github.com/", "//api.github.com/repos/");
         LOG.fine(String.format("Creating repo for %s", apiBaseURL));
-        this.git = git;
-        dir = repo.getDir();
 
         synchronized (tokens) {
             oauthToken.stream().map(Token::new).forEach(tokens::add);
@@ -155,13 +167,15 @@ public class GitHubRepository extends Repository {
         GsonFireBuilder gfb = new GsonFireBuilder();
         IssueDataProcessor issueProcessor = new IssueDataProcessor(this, apiBaseURL + "/issues/");
         EventDataProcessor eventProcessor = new EventDataProcessor(this);
+        UserDataProcessor  userProcessor  = new UserDataProcessor(this);
         gfb.registerPostProcessor(IssueData.class, issueProcessor);
         gfb.registerPostProcessor(EventData.ReferencedEventData.class, eventProcessor);
         GsonBuilder gb = gfb.createGsonBuilder();
+        gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, userProcessor));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
         gb.registerTypeAdapter(EventData.class, eventProcessor);
-        gb.registerTypeAdapter(Commit.class, new CommitProcessor(this));
-        gb.registerTypeAdapter(UserData.class, new UserDataProcessor(this));
+        gb.registerTypeAdapter(UserData.class, userProcessor);
+        gb.registerTypeAdapter(OffsetDateTime.class, new OffsetDateTimerProcessor());
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
         gb.serializeNulls();
         gson = gb.create();
@@ -346,12 +360,12 @@ public class GitHubRepository extends Repository {
 
                 // we still can't find the tip, this probably means the history was rewritten and the refs are invalid
                 // nothing we can do but drop the PR
-                if (!repo.getCommit(pr.head.sha).isPresent()) {
+                if (!getCommit(pr.head.sha).isPresent()) {
                     LOG.warning(String.format("The history of the repo does not include the merged PR %d, therefore it was dropped!", pr.number));
                     return null;
                 }
 
-                Reference target = repo.getBranch("origin/" + pr.base.ref).orElse(null);
+                Reference target = getBranch("origin/" + pr.base.ref).orElse(null);
 
                 Optional<String> commitData = getJSONStringFromPath("/pulls/" + pr.number + "/commits");
                 //noinspection unchecked
@@ -397,9 +411,9 @@ public class GitHubRepository extends Repository {
         if (end != null) params.add("--until=" + df.format(end));
         if (start != null) params.add("--since=" + df.format(start));
         if (onlyMerges) params.add("--merges");
-        Optional<ProcessExecutor.ExecRes> commitList = git.exec(dir, "log", params.toArray(new String[0]));
+        Optional<ProcessExecutor.ExecRes> commitList = getGit().exec(getDir(), "log", params.toArray(new String[0]));
         Function<ProcessExecutor.ExecRes, List<Commit>> toCommitList = res -> {
-            if (git.failed(res)) {
+            if (getGit().failed(res)) {
                 LOG.warning(() -> String.format("Failed to obtain the commits from %s.", this));
                 return null;
             }
@@ -537,7 +551,7 @@ public class GitHubRepository extends Repository {
      */
     private Optional<Token> getValidToken() {
         synchronized (tokens) {
-            // short-circuit if wa already have a valid token
+            // short-circuit if we already have a valid token
             Optional<Token> optToken = tokens.stream().filter(Token::isHeld).filter(Token::isValid).findFirst();
             if (optToken.isPresent()) {
                 optToken.get().acquire();
@@ -658,129 +672,62 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Gets the Repository for direct access.
      *
-     * @return the underlying Repository
+     * @param hash
+     * @return
      */
-    public Repository getRepo() {
-        return repo;
+    Optional<Commit> getGithubCommit(String hash) {
+        return checkedHashes.computeIfAbsent(hash, x ->
+                getJSONStringFromURL(apiBaseURL + "/commits/" + hash).map(commitInfo ->
+                        gson.fromJson(commitInfo, new TypeToken<Commit>() {}.getType())));
     }
 
-    Optional<Commit> getCommitByHashOrMessage(String sha1, String message) {
-        Optional<Commit> exact = getCommit(sha1);
-        if (exact.isPresent()) {
-            return exact;
+    /**
+     *
+     * @param hash
+     * @param message
+     * @param author
+     * @return
+     */
+    Commit getReferencedCommit(String hash, String message, UserData.CommitUserData author) {
+        // Disable logging for this method call, so false positives don't reported
+        Logger repoLog = Logger.getLogger(Repository.class.getCanonicalName());
+        Logger commitLog = Logger.getLogger(Commit.class.getCanonicalName());
+        Level repoLevel = repoLog.getLevel();
+        Level commitLevel = commitLog.getLevel();
+        repoLog.setLevel(Level.OFF);
+        commitLog.setLevel(Level.OFF);
+
+
+        Commit commit = getCommitUnchecked(hash);
+
+        // init and check if data present, otherwise init manually
+        if (commit.getAuthor() == null) {
+            commit.setAuthor(author.name);
+            commit.setAuthorMail(author.email);
+            commit.setAuthorTime(author.date);
+            commit.setMessage(message);
         }
 
-        if (!allowGuessing()) {
-            return Optional.empty();
-        }
+        // Reset logging
+        repoLog.setLevel(repoLevel);
+        commitLog.setLevel(commitLevel);
 
-        return Optional.empty();
+        return commit;
     }
 
     @Override
-    public boolean cleanup(String... retain) {
-        return repo.cleanup(retain);
-    }
-
-    @Override
-    public boolean checkout(Reference ref) {
-        return repo.checkout(ref);
-    }
-
-    @Override
-    public boolean forceCheckout(Reference ref) {
-        return repo.forceCheckout(ref);
-    }
-
-    @Override
-    public boolean fetch() {
-        return repo.fetch();
-    }
-
-    @Override
-    public Optional<List<Commit>> getMergeCommits() {
-        return repo.getMergeCommits();
-    }
-
-    @Override
-    public Optional<Commit> getCurrentHEAD() {
-        return repo.getCurrentHEAD();
-    }
-
-    @Override
-    public Commit getCommitUnchecked(String id) {
-        return unknownCommits.computeIfAbsent(id, repo::getCommitUnchecked);
+    Commit getCommitUnchecked(String id) {
+        return getCommit(id).orElse(unknownCommits.computeIfAbsent(id, (key) -> new Commit(this, key)));
     }
 
     @Override
     public Optional<Commit> getCommit(String id) {
-        return repo.getCommit(id);
-    }
-
-    @Override
-    public Optional<Branch> getBranch(String name) {
-        return repo.getBranch(name);
-    }
-
-    @Override
-    protected Optional<String> toHash(String id) {
-        return Optional.empty();
-    }
-
-    @Override
-    public Optional<Repository> copy(File destination) {
-        return repo.copy(destination);
-    }
-
-    @Override
-    public Optional<List<BlameLine>> blameFile(Path file) {
-        return repo.blameFile(file);
-    }
-
-    @Override
-    public Optional<List<MergeConflict>> blameUnmergedFile(Path file) {
-        return repo.blameUnmergedFile(file);
-    }
-
-    @Override
-    public Optional<Status> getStatus() {
-        return repo.getStatus();
-    }
-
-    @Override
-    public Optional<Status> getStatus(boolean ignored, boolean untracked) {
-        return repo.getStatus(ignored, untracked);
-    }
-
-    @Override
-    public boolean addRemote(String name, String forkURL) {
-        return repo.addRemote(name, forkURL);
-    }
-
-    @Override
-    protected GitWrapper getGit() {
-        return git;
-    }
-
-    @Override
-    public String getUrl() {
-        return repo.getUrl();
-    }
-
-    @Override
-    public File getDir() {
-        return dir;
-    }
-
-    @Override
-    public String getName() {
-        return repo.getName();
+        return Optional.ofNullable(super.getCommit(id).orElse(unknownCommits.get(id)));
     }
 
     /**
      * Only used internally for deserialization, don't implement!
      */
-    public interface IssueDataCached {}
+    interface IssueDataCached {}
 }

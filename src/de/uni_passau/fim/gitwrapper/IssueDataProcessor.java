@@ -1,22 +1,27 @@
-package de.uni_passau.fim.heck.githubinterface;
-
-import com.google.gson.*;
-import com.google.gson.reflect.TypeToken;
-import de.uni_passau.fim.heck.githubinterface.GitHubRepository.IssueDataCached;
-import de.uni_passau.fim.heck.githubinterface.datadefinitions.*;
-import de.uni_passau.fim.seibt.gitwrapper.repo.Commit;
-import de.uni_passau.fim.seibt.gitwrapper.repo.LocalRepository;
-import io.gsonfire.PostProcessor;
+package de.uni_passau.fim.gitwrapper;
 
 import java.lang.reflect.Type;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
+import com.google.gson.reflect.TypeToken;
+import de.uni_passau.fim.gitwrapper.GitHubRepository.IssueDataCached;
+import io.gsonfire.PostProcessor;
 
 /**
  * The IssueDataPostprocessor extracts additional information from issues and populated IssueData instances with other
@@ -93,19 +98,12 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
         Stream<String> referencedCommits = issue.getEventsList().stream()
                 .filter(eventData -> eventData instanceof EventData.ReferencedEventData)
+                // filter out errors from referencing commits
+                .filter(eventData -> ((EventData.ReferencedEventData) eventData).commit != null)
                 .map(eventData -> ((EventData.ReferencedEventData) eventData).commit.getId());
 
         return Stream.concat(Stream.concat(commentCommits, referencedCommits), extractSHA1s(issue.body).stream())
-                .map(hash -> {
-                    // Disable logging for this method call, so false positives don't reported
-                    Logger log = Logger.getLogger(LocalRepository.class.getCanonicalName());
-                    Level level = log.getLevel();
-                    log.setLevel(Level.OFF);
-                    Optional<Commit> c = repo.getCommit(hash);
-                    log.setLevel(level);
-
-                    return c;
-                })
+                .map(repo::getGithubCommit)
 
                 // filter out false positive matches on normal words (and other errors)
                 .filter(Optional::isPresent)

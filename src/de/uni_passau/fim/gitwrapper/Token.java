@@ -1,4 +1,4 @@
-package de.uni_passau.fim.heck.githubinterface;
+package de.uni_passau.fim.gitwrapper;
 
 import java.time.Instant;
 import java.util.Optional;
