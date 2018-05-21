@@ -23,10 +23,6 @@ public class PullRequest extends Reference {
      *
      * @param repo
      *         the local Repository representation of the GitHub repository
-     * @param id
-     *         the branch name
-     * @param remoteName
-     *         the identifier (&lt;user&gt;/&lt;repo&gt;)
      * @param state
      *         the sate of the pull request
      * @param targetBranch
@@ -36,31 +32,9 @@ public class PullRequest extends Reference {
      * @param issue
      *         the corresponding pull request in GitHub
      */
-    PullRequest(GitHubRepository repo, String id, String remoteName, State state, Reference targetBranch, List<Commit> commits, PullRequestData issue) {
-        super(repo, remoteName + "/" + id);
+    PullRequest(GitHubRepository repo, State state, Reference targetBranch, List<Commit> commits, PullRequestData issue) {
+        super(repo, issue.branch);
         this.state = state;
-        this.targetBranch = targetBranch;
-        this.commits = commits;
-        this.repo = repo;
-        this.issue = issue;
-    }
-
-    /**
-     * Adds a {@link State#MERGED merged} PullRequest to the given repo {@code repo} without creating the corresponding
-     * remote.
-     *
-     * @param repo
-     *         the local Repository representation of the GitHub repository
-     * @param targetBranch
-     *         the target branch
-     * @param commits
-     *         A list of Commits included in this PullRequest
-     * @param issue
-     *         the corresponding pull request in GitHub
-     */
-    PullRequest(GitHubRepository repo, Reference targetBranch, List<Commit> commits, PullRequestData issue) {
-        super(repo, issue.head.sha);
-        this.state = State.MERGED;
         this.targetBranch = targetBranch;
         this.commits = commits;
         this.repo = repo;

@@ -10,6 +10,7 @@ public class PullRequestData extends IssueData {
     RefData head;
     RefData base;
     Date merged_at;
+    String branch;
 
     /**
      * For use by the deserializer.
@@ -37,5 +38,12 @@ public class PullRequestData extends IssueData {
      */
     public Date getMergedDate() {
         return merged_at;
+    }
+
+    /**
+     * The name of the branch/reference.
+     */
+    public String getBranch() {
+        return branch;
     }
 }

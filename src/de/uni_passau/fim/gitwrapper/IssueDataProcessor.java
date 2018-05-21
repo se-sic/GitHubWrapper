@@ -1,27 +1,17 @@
 package de.uni_passau.fim.gitwrapper;
 
+import com.google.gson.*;
+import com.google.gson.reflect.TypeToken;
+import de.uni_passau.fim.gitwrapper.GitHubRepository.IssueDataCached;
+import io.gsonfire.PostProcessor;
+
 import java.lang.reflect.Type;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParseException;
-import com.google.gson.JsonParser;
-import com.google.gson.reflect.TypeToken;
-import de.uni_passau.fim.gitwrapper.GitHubRepository.IssueDataCached;
-import io.gsonfire.PostProcessor;
 
 /**
  * The IssueDataPostprocessor extracts additional information from issues and populated IssueData instances with other
@@ -62,6 +52,13 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
             JsonElement issueSource = parser.parse(repo.getJSONStringFromURL(src.getAsJsonObject().get("issue_url").getAsString())
                     .orElseThrow(() -> new JsonParseException("Could not get Issue data for this PR: " + result.url)));
             lookup = gson.fromJson(issueSource, new TypeToken<IssueDataCached>() {}.getType());
+
+            PullRequestData prResult = (PullRequestData) result;
+            if (prResult.head.repo != null) {
+                prResult.branch = prResult.head.repo.full_name + "/" + prResult.head.ref;
+            } else {
+                prResult.branch = prResult.head.sha;
+            }
         }
 
         // fill in missing data

@@ -199,14 +199,14 @@ public class GitHubRepository extends Repository {
      * @return optionally a List of IssueData or an empty Optional if an error occurred
      */
     public Optional<List<IssueData>> getIssues(boolean includePullRequests) {
-        if(issues == null) {
+        if (issues == null) {
             getJSONStringFromPath("/issues?state=all").map(json -> {
                 List<IssueData> data;
                 try {
                     ArrayList<JsonElement> list = gson.fromJson(json, new TypeToken<ArrayList<JsonElement>>() {}.getType());
                     Callable<List<IssueData>> converter = () ->
                             list.parallelStream()
-                                    .map(element -> (IssueData) (gson.fromJson(element, new  TypeToken<IssueDataCached>() {}.getType())))
+                                    .map(element -> (IssueData) (gson.fromJson(element, new TypeToken<IssueDataCached>() {}.getType())))
                                     .collect(Collectors.toList());
                     data = threadPool.submit(converter).join();
 
@@ -334,7 +334,7 @@ public class GitHubRepository extends Repository {
 
                 // if the fork was deleted and the PR was rejected or is still open, we cannot get verify the
                 // commits, so the PR is dropped
-                if (pr.head.repo == null && (state == State.DECLINED || state == State.OPEN)) {
+                if (pr.head.repo == null && State.includes(state, State.UNMERGED)) {
                     LOG.warning(String.format("PR %d has no fork repo and was not merged, therefore it was dropped!", pr.number));
                     return null;
                 }
@@ -350,7 +350,7 @@ public class GitHubRepository extends Repository {
 
                 // we still can't find the tip, this probably means the history was rewritten and the refs are invalid
                 // nothing we can do but drop the PR
-                if (!getCommit(pr.head.sha).isPresent()) {
+                if ( /* TODO super ?*/ !super.getCommit(pr.head.sha).isPresent()) {
                     LOG.warning(String.format("The history of the repo does not include the merged PR %d, therefore it was dropped!", pr.number));
                     return null;
                 }
@@ -373,9 +373,9 @@ public class GitHubRepository extends Repository {
 
                 if (pr.head.repo == null) {
                     LOG.warning(String.format("PR %d has no fork repo", pr.number));
-                    return new PullRequest(this, target, commits, pr);
+                    return new PullRequest(this, State.MERGED, target, commits, pr);
                 }
-                return new PullRequest(this, pr.head.ref, pr.head.repo.full_name, state, target, commits, pr);
+                return new PullRequest(this, state, target, commits, pr);
             }).filter(Objects::nonNull).sorted(Comparator.comparing(pr -> pr.getIssue().created_at)).collect(Collectors.toList());
             pullRequests = threadPool.submit(converter).join();
         });
@@ -453,7 +453,6 @@ public class GitHubRepository extends Repository {
                     return Optional.empty();
                 }
                 token = optToken.get();
-
 
                 do {
                     if (!token.getToken().isPresent()) {
@@ -697,7 +696,6 @@ public class GitHubRepository extends Repository {
         repoLog.setLevel(Level.OFF);
         commitLog.setLevel(Level.OFF);
 
-
         Commit commit = getCommitUnchecked(hash);
 
         // init and check if data present, otherwise init manually
@@ -723,6 +721,24 @@ public class GitHubRepository extends Repository {
     @Override
     public Optional<Commit> getCommit(String id) {
         return Optional.ofNullable(super.getCommit(id).orElse(unknownCommits.get(id)));
+    }
+
+    /**
+     * Gets a PullRequest by its full qualified branch name.
+     *
+     * @param name
+     *         the branch name
+     * @return optionally the PullRequest, if it is known
+     */
+    public Optional<PullRequest> getPullRequest(String name) {
+        if (pullRequests != null) {
+            return pullRequests.stream().filter(pr -> ((PullRequestData) pr.getIssue()).branch.equals(name)).findFirst();
+        } else {
+            return issues.stream().filter(IssueData::isPullRequest).map(pr -> ((PullRequestData) pr))
+                    .filter(pr -> pr.branch.equals(name)).findFirst().map(prd ->
+                            new PullRequest(this, State.getPRState(prd.state, prd.merged_at != null),
+                                    getBranch("origin/" + prd.base.ref).orElse(null), /*TODO*/ null, prd));
+        }
     }
 
     /**
