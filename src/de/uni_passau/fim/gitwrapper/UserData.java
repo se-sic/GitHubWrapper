@@ -47,11 +47,24 @@ public class UserData {
         return Objects.hash(username);
     }
 
+    /**
+     * Data class for information about the users in commits.
+     */
     static class CommitUserData {
         String name;
         String email;
         OffsetDateTime date;
 
+        /**
+         * Creates a new CommitUserData object.
+         *
+         * @param name
+         *         the users name as known to git
+         * @param email
+         *         the users email
+         * @param date
+         *         the date ot the commit
+         */
         CommitUserData(String name, String email, OffsetDateTime date) {
             this.name = name;
             this.email = email;

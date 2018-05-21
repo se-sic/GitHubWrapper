@@ -1,22 +1,11 @@
 package de.uni_passau.fim.gitwrapper;
 
+import com.google.gson.*;
+
 import java.lang.reflect.Type;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
-
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParseException;
-import com.google.gson.JsonParser;
 
 /**
  * The UserDataSerializer helps with keeping track of UserData (including the email, which is not provided directly by
@@ -134,6 +123,13 @@ public class UserDataProcessor implements JsonDeserializer<UserData> {
         return user;
     }
 
+    /**
+     * Get a UserData instance by its GitHub username.
+     *
+     * @param username
+     *         the username
+     * @return optically the UserData, or an empty Optional if that user is not known to GitHub
+     */
     Optional<UserData> getUserByUsername(String username) {
         if (username == null) return Optional.empty();
         Map<String, UserData> lookupList = repo.allowGuessing() ? guessedUsersByUsername : strictUsersByUsername;
@@ -142,6 +138,14 @@ public class UserDataProcessor implements JsonDeserializer<UserData> {
         return Optional.ofNullable(buildAndInsertUser(username, "https://api.github.com/users/" + username));
     }
 
+    /**
+     * Get a UserData instance by its name as known to the local git repository.
+     *
+     * @param name
+     *         the users name
+     * @return optically the UserData, or an empty Optional if that name has not yet been in mapped to a user, or if
+     * the mapping is not unique.
+     */
     Optional<UserData> getUserByName(String name) {
         if (name == null) return Optional.empty();
         return Optional.ofNullable((repo.allowGuessing() ? guessedUsersByName : strictUsersByName).get(name));

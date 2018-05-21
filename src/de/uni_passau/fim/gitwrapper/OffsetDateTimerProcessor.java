@@ -1,16 +1,14 @@
 package de.uni_passau.fim.gitwrapper;
 
+import com.google.gson.*;
+
 import java.lang.reflect.Type;
 import java.time.OffsetDateTime;
 
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParseException;
-import com.google.gson.JsonPrimitive;
-import com.google.gson.JsonSerializationContext;
-import com.google.gson.JsonSerializer;
-
+/**
+ * (De-)Serializer for OffsetDateTime. Delegates to {@link OffsetDateTime#parse(CharSequence)} and
+ * {@link OffsetDateTime#toString()} respectively.
+ */
 public class OffsetDateTimerProcessor implements JsonDeserializer<OffsetDateTime>, JsonSerializer<OffsetDateTime> {
 
     @Override

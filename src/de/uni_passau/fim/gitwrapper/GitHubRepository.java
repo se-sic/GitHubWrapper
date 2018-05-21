@@ -56,13 +56,13 @@ public class GitHubRepository extends Repository {
 
     private final ForkJoinPool threadPool;
 
-    // TODO fix Docu
-
     /**
-     * Create a wrapper around a (local) repository with additional information about GitHub hosted repositories.
+     * Create a repository with additional information about GitHub hosted repositories.
      *
      * @param url
-     *         the local Repository
+     *         the URL of the repository on GitHub
+     * @param dir
+     *         the directory where the local repository is located
      * @param git
      *         the GitWrapper instance to use
      */
@@ -71,10 +71,12 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Create a wrapper around a (local) Repository with additional information about GitHub hosted repositories.
+     * Create a Repository with additional information about GitHub hosted repositories.
      *
      * @param url
-     *         the local repository
+     *         the URL of the repository on GitHub
+     * @param dir
+     *         the directory where the local repository is located
      * @param git
      *         the GitWrapper instance to use
      * @param oauthToken
@@ -87,11 +89,13 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Creates a new GitHubRepository based on the given repo. The given file must contain a JSON dump of the list of
+     * Creates a new GitHubRepository. The given file must contain a JSON dump of the list of
      * corresponding issues from GitHub.
      *
      * @param url
-     *         the repo
+     *         the URL of the repository on GitHub
+     * @param dir
+     *         the directory where the local repository is located
      * @param git
      *         the GitWrapper
      * @param oauthToken
@@ -128,7 +132,9 @@ public class GitHubRepository extends Repository {
      * Create a wrapper around a (local) Repository with additional information about GitHub hosted repositories.
      *
      * @param url
-     *         the local repository
+     *         the URL of the repository on GitHub
+     * @param dir
+     *         the directory where the local repository is located
      * @param git
      *         the GitWrapper instance to use
      * @param oauthToken
@@ -656,9 +662,14 @@ public class GitHubRepository extends Repository {
     }
 
     /**
+     * Gets the corresponding Commit for the given sha1 hash. If the commit is not known by the local repository, a
+     * query is sent to GitHub, to confirm its existence there and additional author data is retrieved. (e.g. GitHub
+     * retains a copy, even if a force push is performed).
      *
      * @param hash
-     * @return
+     *         the sha1 hash of the Commit
+     * @return optionally a Commit, or an empty Optional, if neither the local repository nor GitHub have a reference
+     * to a Commit with the given hash
      */
     Optional<Commit> getGithubCommit(String hash) {
         return checkedHashes.computeIfAbsent(hash, x ->
@@ -667,11 +678,15 @@ public class GitHubRepository extends Repository {
     }
 
     /**
+     * Creates a new Commit with the given data, and tries to fill in the  missing data from the local Repository
      *
      * @param hash
+     *         the sha1 hash of the Commit
      * @param message
+     *         the commit messages
      * @param author
-     * @return
+     *         Data about the Commit author
+     * @return the new Commit
      */
     Commit getReferencedCommit(String hash, String message, UserData.CommitUserData author) {
         // Disable logging for this method call, so false positives don't reported
