@@ -1,38 +1,5 @@
 package de.uni_passau.fim.gitwrapper;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Queue;
-import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
@@ -45,6 +12,23 @@ import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
+
+import java.io.*;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.util.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * A GitHubRepository wraps a (local) Repository to give access to the GitHub API to provide {@link PullRequestData} and
@@ -68,7 +52,7 @@ public class GitHubRepository extends Repository {
     private Map<String, Optional<Commit>> checkedHashes = new ConcurrentHashMap<>();
 
     private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
-    private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(false);
+    private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(true);
 
     private final ForkJoinPool threadPool;
 
@@ -619,7 +603,7 @@ public class GitHubRepository extends Repository {
 
     /**
      * Setter for toggling waiting on exhausted API rate limit.
-     * Default is {@code false}.
+     * Default is {@code true}.
      * This is a global switch and takes immediate effect on all running and future requests.
      *
      * @param sleepOnApiLimit
