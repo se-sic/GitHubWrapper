@@ -199,7 +199,20 @@ public class GitHubRepository extends Repository {
      * @return optionally a List of IssueData or an empty Optional if an error occurred
      */
     public Optional<List<IssueData>> getIssues(boolean includePullRequests) {
-        if (issues == null) {
+        return getIssues(includePullRequests, false);
+    }
+
+    /**
+     * Gets a List of Issues.
+     *
+     * @param includePullRequests
+     *         if {@code true}, will include {@link PullRequestData PullRequests} as well
+     * @param fetch
+     *         if {@code true}, will update the issue list
+     * @return optionally a List of IssueData or an empty Optional if an error occurred
+     */
+    public Optional<List<IssueData>> getIssues(boolean includePullRequests, boolean fetch) {
+        if (issues == null || fetch) {
             getJSONStringFromPath("/issues?state=all").map(json -> {
                 List<IssueData> data;
                 try {
