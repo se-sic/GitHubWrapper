@@ -128,8 +128,16 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
         return Stream.concat(commentIssues, extractHashtags(issue.body).stream()).map(
                 link -> {
+                    int num = 0;
+                    try {
+                        num = Integer.parseInt(link);
+                    } catch (NumberFormatException e) {
+                        //noinspection ConstantConditions Reason: type inference
+                        return Optional.ofNullable((IssueData) null);
+                    }
+
                     // again, short-circuit, if he have a cache hit
-                    IssueData cached = cache.get(Integer.parseInt(link));
+                    IssueData cached = cache.get(num);
                     if (cached != null) {
                         return Optional.of(cached);
                     }
