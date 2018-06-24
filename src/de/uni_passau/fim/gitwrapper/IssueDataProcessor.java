@@ -128,7 +128,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
         return Stream.concat(commentIssues, extractHashtags(issue.body).stream()).map(
                 link -> {
-                    int num = 0;
+                    int num;
                     try {
                         num = Integer.parseInt(link);
                     } catch (NumberFormatException e) {

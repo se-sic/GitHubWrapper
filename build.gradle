@@ -2,19 +2,12 @@ plugins {
     id 'java'
     id 'idea'
     id 'eclipse'
+    id 'application'
 }
 
 version '1.0-SNAPSHOT'
 
 sourceCompatibility = 1.8
-
-sourceSets {
-    main {
-        java {
-            srcDir 'src'
-        }
-    }
-}
 
 repositories {
     mavenCentral()
@@ -25,6 +18,9 @@ dependencies {
 
     //null annotation
     compile group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.1'
+
+    // arg parser for issue runner
+    compile group: 'args4j', name: 'args4j', version: '2.33'
 
     // better http client
     compile 'org.apache.httpcomponents:httpclient:4.5.5'
@@ -39,4 +35,26 @@ dependencies {
 
     // The tooling API need an SLF4J implementation available at runtime, replace this with any other implementation
     runtime 'org.slf4j:slf4j-simple:1.7.21'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir 'src'
+        }
+    }
+}
+
+jar {
+    manifest {
+        attributes(
+                'Class-Path': configurations.compile.collect { it.getName() }.join(' '),
+                'Main-Class': "de.uni_passau.fim.issuerunner.IssueRunner"
+        )
+    }
+}
+
+startScripts {
+    applicationName = rootProject.name
+    mainClassName = "de.uni_passau.fim.issuerunner.IssueRunner"
 }
