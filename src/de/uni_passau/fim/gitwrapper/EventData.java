@@ -1,9 +1,9 @@
 package de.uni_passau.fim.gitwrapper;
 
-import java.time.OffsetDateTime;
-
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
+
+import java.time.OffsetDateTime;
 
 /**
  * A skeleton for information about Events.
@@ -56,10 +56,26 @@ public abstract class EventData {
         }
 
         /**
+         * The color of the label as hex code.
+         */
+        public String getColor() {
+            return label.color;
+        }
+
+        /**
+         * A short description of the label.
+         */
+        public String getDescription() {
+            return label.description;
+        }
+
+        /**
          * Information about the label
          */
         class LabelData {
             String name;
+            String color;
+            String description;
         }
     }
 
