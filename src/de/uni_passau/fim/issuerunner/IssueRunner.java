@@ -9,7 +9,13 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 
 import java.io.*;
-import java.util.*;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
 import java.util.logging.Logger;
 
 public class IssueRunner {
@@ -20,14 +26,15 @@ public class IssueRunner {
             metaVar = "list.txt",
             depends = {"-outDir"},
             forbids = {"-repo"},
-            usage = "List of URLs for GitHub repositories to analyze. To use an existing dump as cache and update it, add path to JSON file after a space.")
+            usage = "List of URLs for GitHub repositories to analyze. To use an existing dump as cache and update it, " +
+                    "add the ISO 8601 date of dump creation followed by the path to the JSON file separated with spaces.")
     private String repoList = null;
 
     @Option(name = "-repo",
             metaVar = "url",
-            depends = {"-dump"},
             forbids = {"-repoList"},
-            usage = "URL for analyzing a singel GitHub repository.")
+            depends = {"-workDir"},
+            usage = "URL for analyzing a single GitHub repository.")
     private String singleRepo = null;
 
     @Option(name = "-dump",
@@ -35,6 +42,12 @@ public class IssueRunner {
             depends = {"-repo"},
             usage = "JSON file to dump a single repo to. If the file exists, it is used as a cache for the repo and updated at the end.")
     private String dump = null;
+
+    @Option(name = "-date",
+            metaVar = "YYY-MM-DDTHH:MM:SSZ",
+            depends = {"-repo", "-dump"},
+            usage = "Time of dump creation.")
+    private String date = null;
 
     @Option(name = "-tokens",
             metaVar = "tokens.txt",
@@ -50,11 +63,10 @@ public class IssueRunner {
 
     @Option(name = "-workDir",
             metaVar = "dir",
-            required = true,
-            usage = "Directory to clone repositories to.")
+            usage = "Directory to clone repositories to. (Default is same as outputDir)")
     private String workDir = null;
 
-    @Option(name = "-outputDIr",
+    @Option(name = "-outputDir",
             metaVar = "dir",
             depends = {"-repoList"},
             usage = "Directory to put the JSON dumps in.")
@@ -93,6 +105,10 @@ public class IssueRunner {
             System.exit(-1);
         }
 
+        if (workDir == null) {
+            workDir = outputDir;
+        }
+
         List<String> tokens;
         if (tokenList != null) {
             tokens = getLinesFromFile(new File(tokenList));
@@ -102,8 +118,19 @@ public class IssueRunner {
             tokens = Collections.singletonList("");
         }
 
+        OffsetDateTime startTime = OffsetDateTime.now();
+        BufferedWriter repoListFile = null;
+        if (outputDir != null) {
+            try {
+                repoListFile = new BufferedWriter(new FileWriter(new File(new File(outputDir), "repolist.txt")));
+            } catch (IOException e) {
+                LOG.severe("Cannot write repo list: " + e);
+            }
+        }
+
         GitWrapper git = new GitWrapper("git");
         List<String> finalTokens = tokens;
+        BufferedWriter finalRepoListFile = repoListFile;
         repos.forEach(line -> {
             String[] info = line.split("\\s+");
             LOG.info("Running for repo " + info[0]);
@@ -115,27 +142,54 @@ public class IssueRunner {
             }
 
             GitHubRepository repo;
-            if (dump != null || info.length >= 2) {
+
+            String dumpPath = null;
+            String dumpTime = null;
+            if (dump != null) {
+                dumpPath = dump;
+                dumpTime = date;
+            } else if (info.length >= 3) {
+                StringBuilder path = new StringBuilder();
+                for (int i = 2; i < info.length; ++i) {
+                    path.append(info[i]);
+                }
+                dumpPath = path.toString();
+                dumpTime = info[1];
+            }
+
+            OffsetDateTime since = null;
+            if (dumpTime != null) {
                 try {
-                    StringBuilder path = new StringBuilder();
-                    for (int i = 1; i < info.length; ++i) {
-                        path.append(info[i]);
+                    since = OffsetDateTime.parse(dumpTime);
+                } catch (DateTimeParseException e) {
+                    LOG.severe("Could not parse date: " + e);
+                }
+            }
+
+            if (dumpPath != null) {
+                File dumpFile = new File(dumpPath);
+                if (dumpFile.exists()) {
+                    try {
+                        repo = new GitHubRepository(line, clone.get().getDir(), git, finalTokens, dumpFile);
+                    } catch (FileNotFoundException e) {
+                        LOG.severe("Could not read issue cache file. Should not happen, since we just checked. Skipping");
+                        return;
                     }
-                    if (dump != null) {
-                        path = new StringBuilder(dump);
-                    }
-                    repo = new GitHubRepository(line, clone.get().getDir(), git, finalTokens, new File(path.toString()));
-                } catch (FileNotFoundException e) {
-                    LOG.warning("Could not read issue cache file " + info[1] + ". Fetching new.");
+                } else {
                     repo = new GitHubRepository(line, clone.get().getDir(), git, finalTokens);
                 }
             } else {
                 repo = new GitHubRepository(line, clone.get().getDir(), git, finalTokens);
             }
 
-            String json = repo.serialize(repo.getIssues(true));
+            Optional<String> json = repo.getIssues(true, since).map(repo::serialize);
+            if (!json.isPresent()) {
+                LOG.severe("Could not net issues. Skipping.");
+                return;
+            }
+
+            File outFile = null;
             try {
-                File outFile;
                 if (dump != null) {
                     outFile = new File(dump);
                 } else {
@@ -143,10 +197,18 @@ public class IssueRunner {
                 }
 
                 BufferedWriter out = new BufferedWriter(new FileWriter(outFile));
-                out.write(json);
+                out.write(json.get());
                 out.close();
             } catch (IOException e) {
-                LOG.severe("Could not write json to file.");
+                LOG.severe("Could not write JSON to file: " + e);
+            }
+            if (finalRepoListFile != null) {
+                try {
+                    finalRepoListFile.write(repo.getUrl() + " " + startTime.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                            + " " + outFile.getCanonicalPath());
+                } catch (IOException e) {
+                    LOG.severe("Could not write repo list to file: " + e);
+                }
             }
         });
     }

@@ -209,8 +209,10 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
     public IssueDataCached deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
         int number = json.getAsJsonObject().get("number").getAsJsonPrimitive().getAsNumber().intValue();
         IssueData cached = cache.get(number);
-        // check cache, and short circuit
+        // check cache -> update and short circuit
         if (cached != null) {
+            cached.body = json.getAsJsonObject().get("body").getAsString();
+            cached.title = json.getAsJsonObject().get("title").getAsString();
             return cached;
         }
 
@@ -242,5 +244,14 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
      */
     void addCache(List<IssueData> protoCache) {
         cache.putAll(protoCache.stream().collect(Collectors.toMap(issue -> issue.number, issue -> issue)));
+    }
+
+    /**
+     * Gets a list of all cached issues.
+     *
+     * @return a collection of all cached issues
+     */
+    Collection<IssueData> getCache() {
+        return cache.values();
     }
 }

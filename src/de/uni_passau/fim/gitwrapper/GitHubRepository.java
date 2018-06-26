@@ -14,10 +14,12 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 
 import java.io.*;
+import java.lang.reflect.Type;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -43,6 +45,7 @@ public class GitHubRepository extends Repository {
 
     private final Gson gson;
     private final CloseableHttpClient hc;
+    private IssueDataProcessor issueProcessor;
 
     private final Pattern commitPattern = Pattern.compile("([0-9a-f]{40})\n(.*?)\nhash=", Pattern.DOTALL);
     private final String apiBaseURL;
@@ -108,7 +111,9 @@ public class GitHubRepository extends Repository {
     public GitHubRepository(String url, File dir, GitWrapper git, List<String> oauthToken, File issueCache) throws FileNotFoundException {
         this(url, dir, git, oauthToken);
 
-        IssueDataProcessor issueProcessor = new IssueDataProcessor(this, apiBaseURL + "/issues/");
+        if (issueProcessor == null) {
+            issueProcessor = new IssueDataProcessor(this, apiBaseURL + "/issues/");
+        }
         GsonBuilder gb = new GsonFireBuilder().createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, new UserDataProcessor(this)));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
@@ -154,8 +159,10 @@ public class GitHubRepository extends Repository {
             oauthToken.stream().map(Token::new).forEach(tokens::add);
         }
 
+        if (issueProcessor == null) {
+            issueProcessor = new IssueDataProcessor(this, apiBaseURL + "/issues/");
+        }
         GsonFireBuilder gfb = new GsonFireBuilder();
-        IssueDataProcessor issueProcessor = new IssueDataProcessor(this, apiBaseURL + "/issues/");
         EventDataProcessor eventProcessor = new EventDataProcessor(this);
         UserDataProcessor  userProcessor  = new UserDataProcessor(this);
         gfb.registerPostProcessor(IssueData.class, issueProcessor);
@@ -199,27 +206,36 @@ public class GitHubRepository extends Repository {
      * @return optionally a List of IssueData or an empty Optional if an error occurred
      */
     public Optional<List<IssueData>> getIssues(boolean includePullRequests) {
-        return getIssues(includePullRequests, false);
+        return getIssues(includePullRequests, null);
     }
 
     /**
-     * Gets a List of Issues.
+     * Gets a List of Issues. Use the {@code updateSince} parameter to request updates (to cached data). Please note,
+     * that this will not remove data deleted at GitHub.
      *
      * @param includePullRequests
      *         if {@code true}, will include {@link PullRequestData PullRequests} as well
-     * @param fetch
-     *         if {@code true}, will update the issue list
+     * @param updateSince
+     *         if not {@code null}, will update all issues added or with changes since the given date
      * @return optionally a List of IssueData or an empty Optional if an error occurred
      */
-    public Optional<List<IssueData>> getIssues(boolean includePullRequests, boolean fetch) {
-        if (issues == null || fetch) {
-            getJSONStringFromPath("/issues?state=all").map(json -> {
+    public Optional<List<IssueData>> getIssues(boolean includePullRequests, OffsetDateTime updateSince) {
+        if (issues == null || updateSince != null) {
+            String timeLimit;
+            Type type = new TypeToken<IssueDataCached>() {}.getType();
+            if (updateSince != null) {
+                timeLimit = "&since=" + updateSince.format(DateTimeFormatter.ISO_DATE_TIME);
+                type = new TypeToken<IssueData>() {}.getType();
+            }
+            else timeLimit = "";
+            Type finalType = type;
+            getJSONStringFromPath("/issues?state=all" + timeLimit).map(json -> {
                 List<IssueData> data;
                 try {
                     ArrayList<JsonElement> list = gson.fromJson(json, new TypeToken<ArrayList<JsonElement>>() {}.getType());
                     Callable<List<IssueData>> converter = () ->
                             list.parallelStream()
-                                    .map(element -> (IssueData) (gson.fromJson(element, new TypeToken<IssueDataCached>() {}.getType())))
+                                    .map(element -> (IssueData) (gson.fromJson(element, finalType)))
                                     .collect(Collectors.toList());
                     data = threadPool.submit(converter).join();
 
@@ -232,6 +248,9 @@ public class GitHubRepository extends Repository {
                 }
                 return data;
             }).ifPresent(list -> {
+                Set<IssueData> all = new HashSet<>(list);
+                all.addAll(issueProcessor.getCache());
+                list = new ArrayList<>(all);
                 list.sort(Comparator.comparing(issue -> issue.created_at));
                 issues = Collections.unmodifiableList(list);
             });
