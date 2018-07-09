@@ -499,8 +499,8 @@ public class GitHubRepository extends Repository {
                                     h -> new ArrayList<>(Collections.singletonList(h.getValue())),
                                     (a, b) -> {a.addAll(b); return a;}));
 
-                    int rateLimitRemaining = Integer.parseInt(headers.getOrDefault("X-RateLimit-Remaining", Collections.singletonList("")).get(0));
-                    Instant rateLimitReset = Instant.ofEpochMilli(Long.parseLong(headers.get("X-RateLimit-Reset").get(0)) * 1000);
+                    int rateLimitRemaining = Integer.parseInt(headers.getOrDefault("X-RateLimit-Remaining", Collections.singletonList("0")).get(0));
+                    Instant rateLimitReset = Instant.ofEpochMilli(Long.parseLong(headers.getOrDefault("X-RateLimit-Reset", Collections.singletonList("0")).get(0)) * 1000);
                     token.update(rateLimitRemaining, rateLimitReset);
 
                     // if this call could have been the last possible, fetch a new token for the next round
