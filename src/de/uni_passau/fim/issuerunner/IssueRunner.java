@@ -135,10 +135,16 @@ public class IssueRunner {
         repos.forEach(line -> {
             String[] info = line.split("\\s+");
             LOG.info("Running for repo " + info[0]);
-            Optional<Repository> clone = git.clone(new File(workDir), info[0], true);
+
+            Optional<Repository> clone;
+            if (new File(info[0]).exists())
+                clone = git.importRepository(new File(info[0]));
+            else {
+                clone = git.clone(new File(workDir), info[0], true);
+            }
 
             if (!clone.isPresent()) {
-                LOG.severe("Could not clone repository " + info[0] + "! Skipping.");
+                LOG.severe("Could not clone/import repository " + info[0] + "! Skipping.");
                 return;
             }
 
@@ -171,16 +177,16 @@ public class IssueRunner {
                 File dumpFile = new File(dumpPath);
                 if (dumpFile.exists()) {
                     try {
-                        repo = new GitHubRepository(line, clone.get().getDir(), git, finalTokens, dumpFile);
+                        repo = new GitHubRepository(clone.get().getUrl(), clone.get().getDir(), git, finalTokens, dumpFile);
                     } catch (FileNotFoundException e) {
                         LOG.severe("Could not read issue cache file. Should not happen, since we just checked. Skipping");
                         return;
                     }
                 } else {
-                    repo = new GitHubRepository(line, clone.get().getDir(), git, finalTokens);
+                    repo = new GitHubRepository(clone.get().getUrl(), clone.get().getDir(), git, finalTokens);
                 }
             } else {
-                repo = new GitHubRepository(line, clone.get().getDir(), git, finalTokens);
+                repo = new GitHubRepository(clone.get().getUrl(), clone.get().getDir(), git, finalTokens);
             }
 
             Optional<String> json = repo.getIssues(true, since).map(repo::serialize);
