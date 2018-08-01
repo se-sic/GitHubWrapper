@@ -92,6 +92,7 @@ public class IssueRunner {
             parser.parseArgument(arguments);
         } catch (CmdLineException clEx) {
             System.out.println("ERROR: Unable to parse command-line options: " + clEx);
+            System.exit(-1);
         }
 
         List<String> repos = null;
