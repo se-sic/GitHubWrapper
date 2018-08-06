@@ -76,6 +76,20 @@ public class GitHubRepository extends Repository {
     /**
      * Create a Repository with additional information about GitHub hosted repositories.
      *
+     * @param repo
+     *         an existing repository cloned from GitHub
+     * @param oauthToken
+     *         a valid oAuth token for GitHub
+     *         (see  <a href="https://github.com/settings/tokens">https://github.com/settings/tokens</a>) for
+     *         information about creating such tokens)
+     */
+    public GitHubRepository(Repository repo, List<String> oauthToken) {
+        this(repo.getUrl(), repo.getDir(), repo.getGit(), oauthToken);
+    }
+
+    /**
+     * Create a Repository with additional information about GitHub hosted repositories.
+     *
      * @param url
      *         the URL of the repository on GitHub
      * @param dir
@@ -92,21 +106,44 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Creates a new GitHubRepository. The given file must contain a JSON dump of the list of
-     * corresponding issues from GitHub.
+     * Create a Repository with additional information about GitHub hosted repositories. The given file must contain a
+     * JSON dump of the list of corresponding issues from GitHub.
+     *
+     * @param repo
+     *         an existing repository cloned from GitHub
+     * @param oauthToken
+     *         a valid oAuth token for GitHub
+     *         (see  <a href="https://github.com/settings/tokens">https://github.com/settings/tokens</a>) for
+     *         information about creating such tokens)
+     * @param issueCache
+     *         the File containing the issue cache
+     * @throws FileNotFoundException
+     *         if {@code issueCache} is not found
+     * @see #serialize(Object)
+     */
+    public GitHubRepository(Repository repo, List<String> oauthToken, File issueCache) throws FileNotFoundException {
+        this(repo.getUrl(), repo.getDir(), repo.getGit(), oauthToken, issueCache);
+    }
+
+    /**
+     * Create a Repository with additional information about GitHub hosted repositories. The given file must contain a
+     * JSON dump of the list of corresponding issues from GitHub.
      *
      * @param url
      *         the URL of the repository on GitHub
      * @param dir
      *         the directory where the local repository is located
      * @param git
-     *         the GitWrapper
+     *         the GitWrapper instance to use
      * @param oauthToken
-     *         a list of usable oAuth tokens
+     *         a valid oAuth token for GitHub
+     *         (see  <a href="https://github.com/settings/tokens">https://github.com/settings/tokens</a>) for
+     *         information about creating such tokens)
      * @param issueCache
      *         the File containing the issue cache
      * @throws FileNotFoundException
      *         if {@code issueCache} is not found
+     * @see #serialize(Object)
      */
     public GitHubRepository(String url, File dir, GitWrapper git, List<String> oauthToken, File issueCache) throws FileNotFoundException {
         this(url, dir, git, oauthToken);
@@ -134,7 +171,7 @@ public class GitHubRepository extends Repository {
     }
 
     /**
-     * Create a wrapper around a (local) Repository with additional information about GitHub hosted repositories.
+     * Create a Repository with additional information about GitHub hosted repositories.
      *
      * @param url
      *         the URL of the repository on GitHub

@@ -170,16 +170,16 @@ public class IssueRunner {
                 File dumpFile = new File(dumpPath);
                 if (dumpFile.exists()) {
                     try {
-                        repo = new GitHubRepository(line, clone.get().getDir(), git, finalTokens, dumpFile);
+                        repo = new GitHubRepository(clone.get(), finalTokens, dumpFile);
                     } catch (FileNotFoundException e) {
                         LOG.severe("Could not read issue cache file. Should not happen, since we just checked. Skipping");
                         return;
                     }
                 } else {
-                    repo = new GitHubRepository(line, clone.get().getDir(), git, finalTokens);
+                    repo = new GitHubRepository(clone.get(), finalTokens);
                 }
             } else {
-                repo = new GitHubRepository(line, clone.get().getDir(), git, finalTokens);
+                repo = new GitHubRepository(clone.get(), finalTokens);
             }
 
             Optional<String> json = repo.getIssues(true, since).map(repo::serialize);
