@@ -47,6 +47,7 @@ public abstract class EventData {
     public class LabeledEventData extends EventData {
 
         LabelData label;
+        boolean added = true;
 
         /**
          * The name of the label.
@@ -67,6 +68,15 @@ public abstract class EventData {
          */
         public String getDescription() {
             return label.description;
+        }
+
+        /**
+         * Checks it the label was added with this event.
+         *
+         * @return {@code true} if this LabelEvent has added a label
+         */
+        public boolean isAdded() {
+            return added;
         }
 
         /**

@@ -12,25 +12,16 @@ import java.util.logging.Logger;
  * The EventDataProcessor helps with mapping events to their specific subclasses and filling fields that cannot be
  * filled directly from the JSON
  */
-class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<EventData>, PostProcessor<EventData.ReferencedEventData> {
+class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<EventData> {
+
     private static final Logger LOG = Logger.getLogger(EventDataProcessor.class.getCanonicalName());
 
     private static Map<String, Class> map = new TreeMap<>();
-    private final GitHubRepository repo;
-
-    /**
-     * Creates a new EventDataProcessor for the given repo.
-     *
-     * @param repo
-     *         the repo
-     */
-    EventDataProcessor(GitHubRepository repo) {
-        this.repo = repo;
-    }
 
     static {
         map.put("", EventData.DefaultEventData.class);
         map.put("labeled", EventData.LabeledEventData.class);
+        map.put("unlabeled", EventData.LabeledEventData.class);
         map.put("referenced", EventData.ReferencedEventData.class);
         map.put("merged", EventData.ReferencedEventData.class);
         map.put("closed", EventData.ReferencedEventData.class);
@@ -46,19 +37,45 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         return context.serialize(src, src.getClass());
     }
 
-    @Override
-    public void postDeserialize(EventData.ReferencedEventData result, JsonElement src, Gson gson) {
-        JsonElement hash = src.getAsJsonObject().get("commit_id");
-        if (hash.isJsonNull()) {
-            return;
+    static class ReferencedEventProcessor implements PostProcessor<EventData.ReferencedEventData> {
+
+        private GitHubRepository repo;
+
+        /**
+         * Creates a new EventDataProcessor for the given repo.
+         *
+         * @param repo
+         *         the repo
+         */
+        ReferencedEventProcessor(GitHubRepository repo) {
+            this.repo = repo;
         }
 
-        result.commit = repo.getGithubCommit(hash.getAsString()).orElseGet(() -> {
-            LOG.warning("Found commit unknown to GitHub and local git repo: " + hash);
-            return null;
-        });
+        @Override
+        public void postDeserialize(EventData.ReferencedEventData result, JsonElement src, Gson gson) {
+            JsonElement hash = src.getAsJsonObject().get("commit_id");
+            if (hash.isJsonNull()) {
+                return;
+            }
+
+            result.commit = repo.getGithubCommit(hash.getAsString()).orElseGet(() -> {
+                LOG.warning("Found commit unknown to GitHub and local git repo: " + hash);
+                return null;
+            });
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.ReferencedEventData src, Gson gson) { }
     }
 
-    @Override
-    public void postSerialize(JsonElement result, EventData.ReferencedEventData src, Gson gson) { }
+    static class LabeledEventProcessor implements PostProcessor<EventData.LabeledEventData> {
+
+        @Override
+        public void postDeserialize(EventData.LabeledEventData result, JsonElement src, Gson gson) {
+            result.added = src.getAsJsonObject().get("event").getAsString().equals("labeled");
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.LabeledEventData src, Gson gson) { }
+    }
 }

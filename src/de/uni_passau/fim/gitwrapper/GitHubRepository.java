@@ -154,7 +154,7 @@ public class GitHubRepository extends Repository {
         GsonBuilder gb = new GsonFireBuilder().createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, new UserDataProcessor(this)));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
-        gb.registerTypeAdapter(EventData.class, new EventDataProcessor(this));
+        gb.registerTypeAdapter(EventData.class, new EventDataProcessor());
         gb.registerTypeAdapter(OffsetDateTime.class, new OffsetDateTimerProcessor());
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
         gb.serializeNulls();
@@ -200,14 +200,14 @@ public class GitHubRepository extends Repository {
             issueProcessor = new IssueDataProcessor(this, apiBaseURL + "/issues/");
         }
         GsonFireBuilder gfb = new GsonFireBuilder();
-        EventDataProcessor eventProcessor = new EventDataProcessor(this);
-        UserDataProcessor  userProcessor  = new UserDataProcessor(this);
+        UserDataProcessor userProcessor = new UserDataProcessor(this);
         gfb.registerPostProcessor(IssueData.class, issueProcessor);
-        gfb.registerPostProcessor(EventData.ReferencedEventData.class, eventProcessor);
+        gfb.registerPostProcessor(EventData.ReferencedEventData.class, new EventDataProcessor.ReferencedEventProcessor(this));
+        gfb.registerPostProcessor(EventData.LabeledEventData.class, new EventDataProcessor.LabeledEventProcessor());
         GsonBuilder gb = gfb.createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, userProcessor));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
-        gb.registerTypeAdapter(EventData.class, eventProcessor);
+        gb.registerTypeAdapter(EventData.class, new EventDataProcessor());
         gb.registerTypeAdapter(UserData.class, userProcessor);
         gb.registerTypeAdapter(OffsetDateTime.class, new OffsetDateTimerProcessor());
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
