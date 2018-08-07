@@ -44,7 +44,7 @@ public class IssueRunner {
     private String dump = null;
 
     @Option(name = "-date",
-            metaVar = "YYY-MM-DDTHH:MM:SSZ",
+            metaVar = "YYYY-MM-DDTHH:MM:SSZ",
             depends = {"-repo", "-dump"},
             usage = "Time of dump creation.")
     private String date = null;
@@ -92,6 +92,7 @@ public class IssueRunner {
             parser.parseArgument(arguments);
         } catch (CmdLineException clEx) {
             System.out.println("ERROR: Unable to parse command-line options: " + clEx);
+            System.exit(-1);
         }
 
         List<String> repos = null;

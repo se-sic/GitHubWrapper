@@ -529,7 +529,9 @@ public class GitHubRepository extends Repository {
                         // return Optional.empty();
                     }
 
-                    CloseableHttpResponse resp = hc.execute(new HttpGet(url + (token.getToken().get().isEmpty() ? "" : "&access_token=" + token.getToken().get())));
+                    String httpURL = url + (token.getToken().get().isEmpty() ? "" : "&access_token=" + token.getToken().get());
+                    LOG.info("Querying URL: " + httpURL);
+                    CloseableHttpResponse resp = hc.execute(new HttpGet(httpURL));
 
                     Map<String, List<String>> headers = Arrays.stream(resp.getAllHeaders())
                             .collect(Collectors.toMap(Header::getName,
