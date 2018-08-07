@@ -31,7 +31,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     private List<EventData> eventsList;
     private List<Commit> relatedCommits;
     // we serialize this list manually, since it may contain circles and even if not adds a lot of repetitive data
-    private transient List<IssueData> relatedIssues = new ArrayList<>();
+    private List<ReferencedIssueData> relatedIssues = new ArrayList<>();
 
     private transient boolean frozen;
 
@@ -73,7 +73,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *         the issue.
      * @see IssueDataProcessor#parseIssues(IssueData, Gson)
      */
-    public void addRelatedIssues(List<IssueData> issues) {
+    public void addRelatedIssues(List<ReferencedIssueData> issues) {
         relatedIssues = issues;
     }
 
@@ -109,7 +109,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *
      * @return a List of IssueData
      */
-    public List<IssueData> getRelatedIssues() {
+    public List<ReferencedIssueData> getRelatedIssues() {
         return relatedIssues;
     }
 
@@ -124,7 +124,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
         commentsList = Collections.unmodifiableList(commentsList.stream()
                 .sorted(Comparator.comparing((comment) -> comment.created_at)).collect(Collectors.toList()));
         relatedIssues = Collections.unmodifiableList(relatedIssues.stream()
-                .sorted(Comparator.comparing(issue -> issue.created_at)).collect(Collectors.toList()));
+                .sorted(Comparator.comparing(issue -> issue.issue.created_at)).collect(Collectors.toList()));
         relatedCommits = Collections.unmodifiableList(relatedCommits.stream()
                 // Remove invalid commits before they cause problems
                 .filter(c -> c.getAuthorTime() != null)
@@ -209,5 +209,57 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     @Override
     public int hashCode() {
         return Objects.hash(url);
+    }
+
+    /**
+     * Wrapper for additional information about referenced issues.
+     */
+    public static class ReferencedIssueData {
+        private transient IssueData issue;
+        private UserData user;
+        private OffsetDateTime referenced_at;
+
+        /**
+         * Creates a new ReferencedIssueData wrapper for adding additional information to linked issues.
+         *
+         * @param issue
+         *         the referenced Issue
+         * @param user
+         *         the referencing user
+         * @param referencedTime
+         *         the referencing time
+         */
+        ReferencedIssueData(IssueData issue, UserData user, OffsetDateTime referencedTime) {
+            this.issue = issue;
+            this.user = user;
+            this.referenced_at = referencedTime;
+        }
+
+        /**
+         * Gets the issue that was referenced.
+         *
+         * @return the referenced Issue
+         */
+        public IssueData getIssue() {
+            return issue;
+        }
+
+        /**
+         * Gets the user has written the comment that referenced the issue.
+         *
+         * @return the referencing user
+         */
+        public UserData getUser() {
+            return user;
+        }
+
+        /**
+         * Gets the time the comment that referenced the issue was written.
+         *
+         * @return the referencing time
+         */
+        public OffsetDateTime getReferencedTime() {
+            return referenced_at;
+        }
     }
 }

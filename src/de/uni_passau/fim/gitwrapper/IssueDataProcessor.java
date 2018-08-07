@@ -118,16 +118,19 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
      *         the Gson used to deserialize
      * @return a list of all Issues that are referenced in the body and the comments
      */
-    List<IssueData> parseIssues(IssueData issue, Gson gson) {
-        Stream<String> commentIssues = issue.getCommentsList().stream().map(comment -> comment.body)
-                .flatMap(body -> extractHashtags(body).stream());
+    List<IssueData.ReferencedIssueData> parseIssues(IssueData issue, Gson gson) {
+        Stream<ReferencedIssueHandler> commentIssues = issue.getCommentsList().stream().map(comment ->
+                new ReferencedIssueHandler(comment, extractHashtags(comment.body)));
 
         // to get real reference events, the timeline api needs to be incorporated. Since it is still in preview as of
         // 2018-04, I have not implemented it.
         // For details and links: https://gist.github.com/dahlbyk/229f6ee762e2b0b45f3add7c2459e64a
 
-        return Stream.concat(commentIssues, extractHashtags(issue.body).stream()).map(
-                link -> {
+        CommentData temp = new CommentData();
+        temp.created_at = issue.created_at;
+        temp.user = issue.user;
+        return Stream.concat(commentIssues, Stream.of(new ReferencedIssueHandler(temp, extractHashtags(issue.body)))).flatMap(
+                commentEntries -> commentEntries.links.stream().map(link -> {
                     int num;
                     try {
                         num = Integer.parseInt(link);
@@ -149,7 +152,8 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .distinct()
-                .collect(Collectors.toList());
+                .map(target -> new IssueData.ReferencedIssueData(target, commentEntries.comment.user, commentEntries.comment.created_at))
+        ).collect(Collectors.toList());
     }
 
     /**
@@ -199,11 +203,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
     }
 
     @Override
-    public void postSerialize(JsonElement result, IssueData src, Gson gson) {
-        JsonArray issues = new JsonArray();
-        src.getRelatedIssues().stream().map(issue -> issue.number).forEach(issues::add);
-        result.getAsJsonObject().add("relatedIssues", issues);
-    }
+    public void postSerialize(JsonElement result, IssueData src, Gson gson) { }
 
     @Override
     public IssueDataCached deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
@@ -253,5 +253,40 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
      */
     Collection<IssueData> getCache() {
         return cache.values();
+    }
+
+    /**
+     * The ReferencedIssueHandler handles (de-)serialization of links to other issues. Further, this is used as
+     * temporary wrapper for relating links to their source comment.
+     */
+    static class ReferencedIssueHandler implements PostProcessor<IssueData.ReferencedIssueData> {
+        private CommentData comment;
+        private List<String> links;
+
+        /**
+         * Constructor for use as temporary "Pair" replacement.
+         *
+         * @param comment
+         *         the source comment
+         * @param links
+         *         the list of linked issue number
+         */
+        private ReferencedIssueHandler(CommentData comment, List<String> links) {
+            this.comment = comment;
+            this.links = links;
+        }
+
+        /**
+         * ReferencedIssueHandler is used for post processing related issue lists to map the issues to their numbers.
+         */
+        ReferencedIssueHandler() { }
+
+        @Override
+        public void postDeserialize(IssueData.ReferencedIssueData result, JsonElement src, Gson gson) { }
+
+        @Override
+        public void postSerialize(JsonElement result, IssueData.ReferencedIssueData src, Gson gson) {
+            result.getAsJsonObject().addProperty("number", src.getIssue().number);
+        }
     }
 }

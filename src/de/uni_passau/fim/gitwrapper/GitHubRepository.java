@@ -202,6 +202,7 @@ public class GitHubRepository extends Repository {
         GsonFireBuilder gfb = new GsonFireBuilder();
         UserDataProcessor userProcessor = new UserDataProcessor(this);
         gfb.registerPostProcessor(IssueData.class, issueProcessor);
+        gfb.registerPostProcessor(IssueData.ReferencedIssueData.class, new IssueDataProcessor.ReferencedIssueHandler());
         gfb.registerPostProcessor(EventData.ReferencedEventData.class, new EventDataProcessor.ReferencedEventProcessor(this));
         gfb.registerPostProcessor(EventData.LabeledEventData.class, new EventDataProcessor.LabeledEventProcessor());
         GsonBuilder gb = gfb.createGsonBuilder();
