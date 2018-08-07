@@ -1,18 +1,12 @@
 package de.uni_passau.fim.gitwrapper;
 
+import com.google.gson.*;
+import io.gsonfire.PostProcessor;
+
 import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.logging.Logger;
-
-import com.google.gson.Gson;
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParseException;
-import com.google.gson.JsonSerializationContext;
-import com.google.gson.JsonSerializer;
-import io.gsonfire.PostProcessor;
 
 /**
  * The EventDataProcessor helps with mapping events to their specific subclasses and filling fields that cannot be
@@ -39,7 +33,7 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         map.put("labeled", EventData.LabeledEventData.class);
         map.put("referenced", EventData.ReferencedEventData.class);
         map.put("merged", EventData.ReferencedEventData.class);
-        map.put("closed", EventData.DefaultEventData.class);
+        map.put("closed", EventData.ReferencedEventData.class);
     }
 
     @Override
@@ -54,8 +48,12 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
 
     @Override
     public void postDeserialize(EventData.ReferencedEventData result, JsonElement src, Gson gson) {
-        String hash = src.getAsJsonObject().get("commit_id").getAsString();
-        result.commit = repo.getGithubCommit(hash).orElseGet(() -> {
+        JsonElement hash = src.getAsJsonObject().get("commit_id");
+        if (hash.isJsonNull()) {
+            return;
+        }
+
+        result.commit = repo.getGithubCommit(hash.getAsString()).orElseGet(() -> {
             LOG.warning("Found commit unknown to GitHub and local git repo: " + hash);
             return null;
         });
