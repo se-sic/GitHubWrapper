@@ -27,13 +27,18 @@ public class IssueData implements GitHubRepository.IssueDataCached {
 
     @SerializedName(value = "url", alternate = {"html_url"}) String url;
 
-    private List<CommentData> commentsList;
+    private List<ReferencedLink<String>> commentsList;
     private List<EventData> eventsList;
-    private List<Commit> relatedCommits;
-    // we serialize this list manually, since it may contain circles and even if not adds a lot of repetitive data
-    private List<ReferencedIssueData> relatedIssues = new ArrayList<>();
+    private List<ReferencedLink<Commit>> relatedCommits;
+    List<ReferencedLink<Integer>> relatedIssues;
 
+    // we serialize this list manually, since it may contain circles and even if not adds a lot of repetitive data
+    private transient List<ReferencedLink<IssueData>> relatedIssuesList = new ArrayList<>();
+
+    transient GitHubRepository repo;
     private transient boolean frozen;
+
+    IssueData() { }
 
     /**
      * Adds a list of Comments to this Issue.
@@ -41,7 +46,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      * @param comments
      *         the Comment list
      */
-    public void addComments(List<CommentData> comments) {
+    public void addComments(List<ReferencedLink<String>> comments) {
         commentsList = comments;
     }
 
@@ -62,7 +67,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *         the Commit list
      * @see IssueDataProcessor#parseCommits(IssueData)
      */
-    public void addRelatedCommits(List<Commit> commits) {
+    public void addRelatedCommits(List<ReferencedLink<Commit>> commits) {
         relatedCommits = commits;
     }
 
@@ -73,16 +78,19 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *         the issue.
      * @see IssueDataProcessor#parseIssues(IssueData, Gson)
      */
-    public void addRelatedIssues(List<ReferencedIssueData> issues) {
-        relatedIssues = issues;
+    public void addRelatedIssues(List<ReferencedLink<IssueData>> issues) {
+        relatedIssues = issues.stream().map(issue ->
+                new ReferencedLink<>(issue.target.number, issue.user, issue.referenced_at)
+        ).collect(Collectors.toList());
+        relatedIssuesList = issues;
     }
 
     /**
-     * Gets a List of all Comments
+     * Gets a List of all comments.
      *
-     * @return a List of CommentData
+     * @return a List of comments in form of ReferencedLink<String>
      */
-    public List<CommentData> getCommentsList() {
+    public List<ReferencedLink<String>> getCommentsList() {
         return commentsList;
     }
 
@@ -100,7 +108,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *
      * @return a List of Commits
      */
-    public List<Commit> getRelatedCommits() {
+    public List<ReferencedLink<Commit>> getRelatedCommits() {
         return relatedCommits;
     }
 
@@ -109,26 +117,33 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *
      * @return a List of IssueData
      */
-    public List<ReferencedIssueData> getRelatedIssues() {
-        return relatedIssues;
+    public List<ReferencedLink<IssueData>> getRelatedIssues() {
+        return relatedIssuesList;
     }
 
     /**
-     * Before accessing data for the first time, sort and lock all data once.
+     * Before accessing data for the first time, init, sort and lock all data once.
      */
-    public void freeze() {
+    void freeze() {
         if (frozen) return;
 
         eventsList = Collections.unmodifiableList(eventsList.stream()
-                .sorted(Comparator.comparing(event -> event.created_at)).collect(Collectors.toList()));
+                .sorted(Comparator.comparing(link -> link.created_at)).collect(Collectors.toList()));
         commentsList = Collections.unmodifiableList(commentsList.stream()
-                .sorted(Comparator.comparing((comment) -> comment.created_at)).collect(Collectors.toList()));
-        relatedIssues = Collections.unmodifiableList(relatedIssues.stream()
-                .sorted(Comparator.comparing(issue -> issue.issue.created_at)).collect(Collectors.toList()));
+                .sorted(Comparator.comparing(link -> link.referenced_at)).collect(Collectors.toList()));
+        if (relatedIssuesList == null) {
+            relatedIssuesList = relatedIssues.stream().map(id ->
+                    new ReferencedLink<>(repo.getIssueFromCache(id.target), id.user, id.referenced_at)
+            ).collect(Collectors.toList());
+        }
+        relatedIssuesList = Collections.unmodifiableList(relatedIssuesList.stream()
+                .sorted(Comparator.comparing(link -> link.referenced_at)).collect(Collectors.toList()));
         relatedCommits = Collections.unmodifiableList(relatedCommits.stream()
                 // Remove invalid commits before they cause problems
-                .filter(c -> c.getAuthorTime() != null)
-                .sorted(Comparator.comparing(Commit::getAuthorTime)).collect(Collectors.toList()));
+                .filter(c -> c.getTarget() != null && c.getTarget().getAuthorTime() != null)
+                .sorted(Comparator.comparing(link -> link.referenced_at)).collect(Collectors.toList()));
+
+        frozen = true;
     }
 
     /**
@@ -209,57 +224,5 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     @Override
     public int hashCode() {
         return Objects.hash(url);
-    }
-
-    /**
-     * Wrapper for additional information about referenced issues.
-     */
-    public static class ReferencedIssueData {
-        private transient IssueData issue;
-        private UserData user;
-        private OffsetDateTime referenced_at;
-
-        /**
-         * Creates a new ReferencedIssueData wrapper for adding additional information to linked issues.
-         *
-         * @param issue
-         *         the referenced Issue
-         * @param user
-         *         the referencing user
-         * @param referencedTime
-         *         the referencing time
-         */
-        ReferencedIssueData(IssueData issue, UserData user, OffsetDateTime referencedTime) {
-            this.issue = issue;
-            this.user = user;
-            this.referenced_at = referencedTime;
-        }
-
-        /**
-         * Gets the issue that was referenced.
-         *
-         * @return the referenced Issue
-         */
-        public IssueData getIssue() {
-            return issue;
-        }
-
-        /**
-         * Gets the user has written the comment that referenced the issue.
-         *
-         * @return the referencing user
-         */
-        public UserData getUser() {
-            return user;
-        }
-
-        /**
-         * Gets the time the comment that referenced the issue was written.
-         *
-         * @return the referencing time
-         */
-        public OffsetDateTime getReferencedTime() {
-            return referenced_at;
-        }
     }
 }

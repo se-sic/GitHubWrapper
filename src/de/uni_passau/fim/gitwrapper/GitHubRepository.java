@@ -154,6 +154,7 @@ public class GitHubRepository extends Repository {
         GsonBuilder gb = new GsonFireBuilder().createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, new UserDataProcessor(this)));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
+        gb.registerTypeAdapter(ReferencedLink.class, new ReferencedLinkProcessor(this));
         gb.registerTypeAdapter(EventData.class, new EventDataProcessor());
         gb.registerTypeAdapter(OffsetDateTime.class, new OffsetDateTimerProcessor());
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -163,8 +164,7 @@ public class GitHubRepository extends Repository {
         // read cache and fill up missing issue data
         List<IssueData> issues = new ArrayList<>(tempGson.fromJson(new BufferedReader(new FileReader(issueCache)), new TypeToken<List<IssueDataCached>>() {}.getType()));
         issueProcessor.addCache(issues);
-
-        issues.forEach(issueData -> issueData.addRelatedIssues(issueProcessor.parseIssues(issueData, tempGson)));
+        issues.forEach(IssueData::freeze);
 
         this.issues = issues;
 //        getPullRequests();
@@ -201,13 +201,15 @@ public class GitHubRepository extends Repository {
         }
         GsonFireBuilder gfb = new GsonFireBuilder();
         UserDataProcessor userProcessor = new UserDataProcessor(this);
+        ReferencedLinkProcessor referencedLinkProcessor = new ReferencedLinkProcessor(this);
         gfb.registerPostProcessor(IssueData.class, issueProcessor);
-        gfb.registerPostProcessor(IssueData.ReferencedIssueData.class, new IssueDataProcessor.ReferencedIssueHandler());
+        gfb.registerPostProcessor(ReferencedLink.class, referencedLinkProcessor);
         gfb.registerPostProcessor(EventData.ReferencedEventData.class, new EventDataProcessor.ReferencedEventProcessor(this));
         gfb.registerPostProcessor(EventData.LabeledEventData.class, new EventDataProcessor.LabeledEventProcessor());
         GsonBuilder gb = gfb.createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, userProcessor));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
+        gb.registerTypeAdapter(ReferencedLink.class, referencedLinkProcessor);
         gb.registerTypeAdapter(EventData.class, new EventDataProcessor());
         gb.registerTypeAdapter(UserData.class, userProcessor);
         gb.registerTypeAdapter(OffsetDateTime.class, new OffsetDateTimerProcessor());
@@ -287,7 +289,7 @@ public class GitHubRepository extends Repository {
                 return data;
             }).ifPresent(list -> {
                 Set<IssueData> all = new HashSet<>(list);
-                all.addAll(issueProcessor.getCache());
+                all.addAll(issueProcessor.getCache().values());
                 list = new ArrayList<>(all);
                 list.sort(Comparator.comparing(issue -> issue.created_at));
                 issues = Collections.unmodifiableList(list);
@@ -325,10 +327,10 @@ public class GitHubRepository extends Repository {
      *         the parent IssueData
      * @return optionally a list of CommentData or an empty Optional if an error occurred
      */
-    Optional<List<CommentData>> getComments(IssueData issue) {
+    Optional<List<ReferencedLink<String>>> getComments(IssueData issue) {
         return getJSONStringFromPath("/issues/" + issue.number + "/comments?state=all").map(json -> {
             try {
-                return gson.fromJson(json, new TypeToken<ArrayList<CommentData>>() {}.getType());
+                return gson.fromJson(json, new TypeToken<ArrayList<ReferencedLink>>() {}.getType());
             } catch (JsonSyntaxException e) {
                 LOG.warning("Encountered invalid JSON: " + json);
                 return null;
@@ -811,6 +813,10 @@ public class GitHubRepository extends Repository {
                             new PullRequest(this, State.getPRState(prd.state, prd.merged_at != null),
                                     getBranch("origin/" + prd.base.ref).orElse(null), /*TODO*/ null, prd));
         }
+    }
+
+    IssueData getIssueFromCache(Integer target) {
+        return issueProcessor.getCache().get(target);
     }
 
     /**

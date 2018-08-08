@@ -48,7 +48,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
         IssueData lookup = result;
         if (result.isPullRequest) {
-            // we need the actual issue data back, because events and comments are missing in an pr
+            // we need the actual issue data back, because events and comments are missing in a pr
             JsonElement issueSource = parser.parse(repo.getJSONStringFromURL(src.getAsJsonObject().get("issue_url").getAsString())
                     .orElseThrow(() -> new JsonParseException("Could not get Issue data for this PR: " + result.url)));
             lookup = gson.fromJson(issueSource, new TypeToken<IssueDataCached>() {}.getType());
@@ -64,20 +64,35 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         // fill in missing data
         result.state = State.getFromString(src.getAsJsonObject().get("state").getAsString());
 
-        Optional<List<CommentData>> comments = repo.getComments(lookup);
-        Optional<List<EventData>> events = repo.getEvents(lookup);
-
-        comments.ifPresent(result::addComments);
-        events.ifPresent(result::addEvents);
-
-        List<Commit> commits = parseCommits(result);
-        if (result.isPullRequest) {
-            Optional<String> json = repo.getJSONStringFromURL(src.getAsJsonObject().get("commits_url").getAsString());
-            json.ifPresent(data -> commits.addAll(gson.fromJson(data, new TypeToken<ArrayList<Commit>>(){}.getType())));
+        if (result.getCommentsList() == null) {
+            Optional<List<ReferencedLink<String>>> comments = repo.getComments(lookup);
+            comments.ifPresent(result::addComments);
+        }
+        if (result.getEventsList() == null) {
+            Optional<List<EventData>> events = repo.getEvents(lookup);
+            events.ifPresent(result::addEvents);
         }
 
-        result.addRelatedCommits(commits);
-        result.addRelatedIssues(parseIssues(result, gson));
+        if (result.getRelatedCommits() == null) {
+            List<ReferencedLink<Commit>> commits = parseCommits(result);
+            if (result.isPullRequest) {
+                Optional<String> json = repo.getJSONStringFromURL(src.getAsJsonObject().get("commits_url").getAsString());
+                //noinspection unchecked
+                json.ifPresent(data -> commits.addAll(
+                        ((List<Commit>) gson.fromJson(data, new TypeToken<ArrayList<Commit>>() {}.getType())).stream().map(c -> {
+                            UserData user = new UserData();
+                            user.email = c.getCommitterMail();
+                            user.name = c.getCommitter();
+                            return new ReferencedLink<>(c, user, c.getCommitterTime());
+                        }).collect(Collectors.toList())));
+            }
+
+            result.addRelatedCommits(commits);
+        }
+
+        if (result.relatedIssues == null) {
+            result.addRelatedIssues(parseIssues(result, gson));
+        }
 
         workingQueue.remove(result.number);
     }
@@ -89,23 +104,24 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
      *         the IssueData
      * @return a List of all referenced Commits
      */
-    private List<Commit> parseCommits(IssueData issue) {
-        Stream<String> commentCommits = issue.getCommentsList().stream().map(comment -> comment.body)
-                .flatMap(body -> extractSHA1s(body).stream());
+    private List<ReferencedLink<Commit>> parseCommits(IssueData issue) {
+        Stream<ReferencedLink<List<String>>> commentCommits = issue.getCommentsList().stream().map(comment ->
+                        new ReferencedLink<>(extractSHA1s(comment.target), comment.user, comment.referenced_at));
 
-        Stream<String> referencedCommits = issue.getEventsList().stream()
+        Stream<ReferencedLink<List<String>>> referencedCommits = issue.getEventsList().stream()
                 .filter(eventData -> eventData instanceof EventData.ReferencedEventData)
                 // filter out errors from referencing commits
                 .filter(eventData -> ((EventData.ReferencedEventData) eventData).commit != null)
-                .map(eventData -> ((EventData.ReferencedEventData) eventData).commit.getId());
+                .map(eventData -> new ReferencedLink<>(Collections.singletonList(((EventData.ReferencedEventData) eventData).commit.getId()), eventData.user, eventData.created_at));
 
-        return Stream.concat(Stream.concat(commentCommits, referencedCommits), extractSHA1s(issue.body).stream())
-                .map(repo::getGithubCommit)
-
-                // filter out false positive matches on normal words (and other errors)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .distinct()
+        return Stream.concat(Stream.concat(commentCommits, referencedCommits), Stream.of(new ReferencedLink<>(extractSHA1s(issue.body), issue.user, issue.created_at)))
+                .flatMap(commentEntries -> commentEntries.target.stream()
+                        .map(repo::getGithubCommit)
+                        // filter out false positive matches on normal words (and other errors)
+                        .filter(Optional::isPresent)
+                        .map(Optional::get)
+                        .distinct()
+                        .map(target -> new ReferencedLink<>(target, commentEntries.user, commentEntries.referenced_at)))
                 .collect(Collectors.toList());
     }
 
@@ -118,42 +134,40 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
      *         the Gson used to deserialize
      * @return a list of all Issues that are referenced in the body and the comments
      */
-    List<IssueData.ReferencedIssueData> parseIssues(IssueData issue, Gson gson) {
-        Stream<ReferencedIssueHandler> commentIssues = issue.getCommentsList().stream().map(comment ->
-                new ReferencedIssueHandler(comment, extractHashtags(comment.body)));
+    List<ReferencedLink<IssueData>> parseIssues(IssueData issue, Gson gson) {
+        Stream<ReferencedLink<List<String>>> commentIssues = issue.getCommentsList().stream().map(comment ->
+                new ReferencedLink<>(extractHashtags(comment.getTarget()), comment.user, comment.referenced_at));
 
         // to get real reference events, the timeline api needs to be incorporated. Since it is still in preview as of
         // 2018-04, I have not implemented it.
         // For details and links: https://gist.github.com/dahlbyk/229f6ee762e2b0b45f3add7c2459e64a
 
-        CommentData temp = new CommentData();
-        temp.created_at = issue.created_at;
-        temp.user = issue.user;
-        return Stream.concat(commentIssues, Stream.of(new ReferencedIssueHandler(temp, extractHashtags(issue.body)))).flatMap(
-                commentEntries -> commentEntries.links.stream().map(link -> {
-                    int num;
-                    try {
-                        num = Integer.parseInt(link);
-                    } catch (NumberFormatException e) {
-                        //noinspection ConstantConditions Reason: type inference
-                        return Optional.ofNullable((IssueData) null);
-                    }
+        return Stream.concat(commentIssues, Stream.of(new ReferencedLink<>(extractHashtags(issue.body), issue.user, issue.created_at)))
+                .flatMap(commentEntries -> commentEntries.target.stream()
+                        .map(link -> {
+                            int num;
+                            try {
+                                num = Integer.parseInt(link);
+                            } catch (NumberFormatException e) {
+                                //noinspection ConstantConditions Reason: type inference
+                                return Optional.ofNullable((IssueData) null);
+                            }
 
-                    // again, short-circuit, if he have a cache hit
-                    IssueData cached = cache.get(num);
-                    if (cached != null) {
-                        return Optional.of(cached);
-                    }
+                            // again, short-circuit, if he have a cache hit
+                            IssueData cached = cache.get(num);
+                            if (cached != null) {
+                                return Optional.of(cached);
+                            }
 
-                    Optional<String> refIssue = repo.getJSONStringFromURL(issueBaseUrl + link);
-                    return refIssue.map(s -> (IssueData) gson.fromJson(s, new TypeToken<IssueDataCached>() {}.getType()));
-                })
-                // filter out false positive matches on normal words (and other errors)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .distinct()
-                .map(target -> new IssueData.ReferencedIssueData(target, commentEntries.comment.user, commentEntries.comment.created_at))
-        ).collect(Collectors.toList());
+                            Optional<String> refIssue = repo.getJSONStringFromURL(issueBaseUrl + link);
+                            return refIssue.map(s -> (IssueData) gson.fromJson(s, new TypeToken<IssueDataCached>() {}.getType()));
+                        })
+                        // filter out false positive matches on normal words (and other errors)
+                        .filter(Optional::isPresent)
+                        .map(Optional::get)
+                        .distinct()
+                        .map(target -> new ReferencedLink<>(target, commentEntries.user, commentEntries.referenced_at)))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -213,6 +227,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         if (cached != null) {
             cached.body = json.getAsJsonObject().get("body").getAsString();
             cached.title = json.getAsJsonObject().get("title").getAsString();
+            cached.repo = repo;
             return cached;
         }
 
@@ -222,17 +237,23 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
             // get additional data
             String data = repo.getJSONStringFromURL(pr.getAsJsonObject().get("url").getAsString())
                     .orElseThrow(() -> new JsonParseException("Could not get PullRequest data for issue: " + number + " in repo " + repo));
-            return context.deserialize(parser.parse(data), new TypeToken<PullRequestData>() {}.getType());
+            PullRequestData result = context.deserialize(parser.parse(data), new TypeToken<PullRequestData>() {}.getType());
+            result.repo = repo;
+            return result;
         }
 
         // check if pr from local dump, we then already have all data
         pr = json.getAsJsonObject().get("isPullRequest");
         if (pr != null && pr.getAsBoolean()) {
-            return context.deserialize(json, new TypeToken<PullRequestData>() {}.getType());
+            PullRequestData result = context.deserialize(json, new TypeToken<PullRequestData>() {}.getType());
+            result.repo = repo;
+            return result;
         }
 
         // normal issue from github or dump
-        return context.deserialize(json, new TypeToken<IssueData>() {}.getType());
+        IssueData result = context.deserialize(json, new TypeToken<IssueData>() {}.getType());
+        result.repo = repo;
+        return result;
     }
 
     /**
@@ -251,42 +272,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
      *
      * @return a collection of all cached issues
      */
-    Collection<IssueData> getCache() {
-        return cache.values();
-    }
-
-    /**
-     * The ReferencedIssueHandler handles (de-)serialization of links to other issues. Further, this is used as
-     * temporary wrapper for relating links to their source comment.
-     */
-    static class ReferencedIssueHandler implements PostProcessor<IssueData.ReferencedIssueData> {
-        private CommentData comment;
-        private List<String> links;
-
-        /**
-         * Constructor for use as temporary "Pair" replacement.
-         *
-         * @param comment
-         *         the source comment
-         * @param links
-         *         the list of linked issue number
-         */
-        private ReferencedIssueHandler(CommentData comment, List<String> links) {
-            this.comment = comment;
-            this.links = links;
-        }
-
-        /**
-         * ReferencedIssueHandler is used for post processing related issue lists to map the issues to their numbers.
-         */
-        ReferencedIssueHandler() { }
-
-        @Override
-        public void postDeserialize(IssueData.ReferencedIssueData result, JsonElement src, Gson gson) { }
-
-        @Override
-        public void postSerialize(JsonElement result, IssueData.ReferencedIssueData src, Gson gson) {
-            result.getAsJsonObject().addProperty("number", src.getIssue().number);
-        }
+    Map<Integer, IssueData> getCache() {
+        return cache;
     }
 }
