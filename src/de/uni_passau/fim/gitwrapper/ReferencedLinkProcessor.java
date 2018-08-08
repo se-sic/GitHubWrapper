@@ -14,6 +14,11 @@ public class ReferencedLinkProcessor implements JsonDeserializer<ReferencedLink>
 
     private final GitHubRepository repo;
 
+    /**
+     * Creates a new ReferencedLinkProcessor for handling links from Issues specific to the provided GitHubRepository
+     * to other elements on this repo.
+     * @param repo the GitHubRepository
+     */
     ReferencedLinkProcessor(GitHubRepository repo) {
         this.repo = repo;
     }

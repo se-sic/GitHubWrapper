@@ -28,7 +28,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
     private final String issueBaseUrl;
 
     /**
-     * Creates a new IssueDataPostprocessor for handling Issues specific to the provided GitHubRepository.
+     * Creates a new IssueDataProcessor for handling Issues specific to the provided GitHubRepository.
      *
      * @param repo
      *         the repository
@@ -36,65 +36,6 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
     IssueDataProcessor(GitHubRepository repo, String issueBaseUrl) {
         this.repo = repo;
         this.issueBaseUrl = issueBaseUrl;
-    }
-
-    @Override
-    public void postDeserialize(IssueData result, JsonElement src, Gson gson) {
-        // check if currently worked on, to return early and break cyclic dependencies
-        IssueData workingOn = workingQueue.get(result.number);
-        if (workingOn != null) return;
-        workingQueue.put(result.number, result);
-        cache.put(result.number, result);
-
-        IssueData lookup = result;
-        if (result.isPullRequest) {
-            // we need the actual issue data back, because events and comments are missing in a pr
-            JsonElement issueSource = parser.parse(repo.getJSONStringFromURL(src.getAsJsonObject().get("issue_url").getAsString())
-                    .orElseThrow(() -> new JsonParseException("Could not get Issue data for this PR: " + result.url)));
-            lookup = gson.fromJson(issueSource, new TypeToken<IssueDataCached>() {}.getType());
-
-            PullRequestData prResult = (PullRequestData) result;
-            if (prResult.head.repo != null) {
-                prResult.branch = prResult.head.repo.full_name + "/" + prResult.head.ref;
-            } else {
-                prResult.branch = prResult.head.sha;
-            }
-        }
-
-        // fill in missing data
-        result.state = State.getFromString(src.getAsJsonObject().get("state").getAsString());
-
-        if (result.getCommentsList() == null) {
-            Optional<List<ReferencedLink<String>>> comments = repo.getComments(lookup);
-            comments.ifPresent(result::addComments);
-        }
-        if (result.getEventsList() == null) {
-            Optional<List<EventData>> events = repo.getEvents(lookup);
-            events.ifPresent(result::addEvents);
-        }
-
-        if (result.getRelatedCommits() == null) {
-            List<ReferencedLink<Commit>> commits = parseCommits(result);
-            if (result.isPullRequest) {
-                Optional<String> json = repo.getJSONStringFromURL(src.getAsJsonObject().get("commits_url").getAsString());
-                //noinspection unchecked
-                json.ifPresent(data -> commits.addAll(
-                        ((List<Commit>) gson.fromJson(data, new TypeToken<ArrayList<Commit>>() {}.getType())).stream().map(c -> {
-                            UserData user = new UserData();
-                            user.email = c.getCommitterMail();
-                            user.name = c.getCommitter();
-                            return new ReferencedLink<>(c, user, c.getCommitterTime());
-                        }).collect(Collectors.toList())));
-            }
-
-            result.addRelatedCommits(commits);
-        }
-
-        if (result.relatedIssues == null) {
-            result.addRelatedIssues(parseIssues(result, gson));
-        }
-
-        workingQueue.remove(result.number);
     }
 
     /**
@@ -256,12 +197,70 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         return result;
     }
 
+    @Override
+    public void postDeserialize(IssueData result, JsonElement src, Gson gson) {
+        // check if currently worked on, to return early and break cyclic dependencies
+        IssueData workingOn = workingQueue.get(result.number);
+        if (workingOn != null) return;
+        workingQueue.put(result.number, result);
+        cache.put(result.number, result);
+
+        IssueData lookup = result;
+        if (result.isPullRequest) {
+            // we need the actual issue data back, because events and comments are missing in a pr
+            JsonElement issueSource = parser.parse(repo.getJSONStringFromURL(src.getAsJsonObject().get("issue_url").getAsString())
+                    .orElseThrow(() -> new JsonParseException("Could not get Issue data for this PR: " + result.url)));
+            lookup = gson.fromJson(issueSource, new TypeToken<IssueDataCached>() {}.getType());
+
+            PullRequestData prResult = (PullRequestData) result;
+            if (prResult.head.repo != null) {
+                prResult.branch = prResult.head.repo.full_name + "/" + prResult.head.ref;
+            } else {
+                prResult.branch = prResult.head.sha;
+            }
+        }
+
+        // fill in missing data
+        result.state = State.getFromString(src.getAsJsonObject().get("state").getAsString());
+
+        if (result.getCommentsList() == null) {
+            Optional<List<ReferencedLink<String>>> comments = repo.getComments(lookup);
+            comments.ifPresent(result::setComments);
+        }
+        if (result.getEventsList() == null) {
+            Optional<List<EventData>> events = repo.getEvents(lookup);
+            events.ifPresent(result::setEvents);
+        }
+
+        if (result.getRelatedCommits() == null) {
+            List<ReferencedLink<Commit>> commits = parseCommits(result);
+            if (result.isPullRequest) {
+                Optional<String> json = repo.getJSONStringFromURL(src.getAsJsonObject().get("commits_url").getAsString());
+                //noinspection unchecked
+                json.ifPresent(data -> commits.addAll(
+                        ((List<Commit>) gson.fromJson(data, new TypeToken<ArrayList<Commit>>() {}.getType())).stream().map(c -> {
+                            UserData user = new UserData();
+                            user.email = c.getCommitterMail();
+                            user.name = c.getCommitter();
+                            return new ReferencedLink<>(c, user, c.getCommitterTime());
+                        }).collect(Collectors.toList())));
+            }
+
+            result.setRelatedCommits(commits);
+        }
+
+        if (result.relatedIssues == null) {
+            result.setRelatedIssues(parseIssues(result, gson));
+        }
+
+        workingQueue.remove(result.number);
+    }
+
     /**
      * Manually adds Issues to the cache used for short-circuiting deserialization.
      *
      * @param protoCache
-     *         a list of prototype IssueData elements ({@link IssueData#commentsList}, {@link IssueData#eventsList},
-     *         {@link IssueData#relatedCommits} and {@link IssueData#relatedIssues} are allowed to be missing)
+     *         a list of IssueData elements
      */
     void addCache(List<IssueData> protoCache) {
         cache.putAll(protoCache.stream().collect(Collectors.toMap(issue -> issue.number, issue -> issue)));

@@ -38,52 +38,165 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     transient GitHubRepository repo;
     private transient boolean frozen;
 
+    /**
+     * Creates a new IssueData object.
+     */
     IssueData() { }
 
     /**
-     * Adds a list of Comments to this Issue.
+     * Sets a list of Comments to this Issue.
      *
      * @param comments
      *         the Comment list
      */
-    public void addComments(List<ReferencedLink<String>> comments) {
+    void setComments(List<ReferencedLink<String>> comments) {
         commentsList = comments;
     }
 
     /**
-     * Adds a list of Events to this Issue.
+     * Sets a list of Events to this Issue.
      *
      * @param events
      *         the Event list.
      */
-    public void addEvents(List<EventData> events) {
+    void setEvents(List<EventData> events) {
         eventsList = events;
     }
 
     /**
-     * Adds a related Commit to this Issue.
+     * Sets a related Commit to this Issue.
      *
      * @param commits
      *         the Commit list
      * @see IssueDataProcessor#parseCommits(IssueData)
      */
-    public void addRelatedCommits(List<ReferencedLink<Commit>> commits) {
+    void setRelatedCommits(List<ReferencedLink<Commit>> commits) {
         relatedCommits = commits;
     }
 
     /**
-     * Adds a related Issue to this Issue.
+     * Sets a related Issue to this Issue.
      *
      * @param issues
      *         the issue.
      * @see IssueDataProcessor#parseIssues(IssueData, Gson)
      */
-    public void addRelatedIssues(List<ReferencedLink<IssueData>> issues) {
+    void setRelatedIssues(List<ReferencedLink<IssueData>> issues) {
         relatedIssues = issues.stream().map(issue ->
                 new ReferencedLink<>(issue.target.number, issue.user, issue.referenced_at)
         ).collect(Collectors.toList());
         relatedIssuesList = issues;
     }
+
+    /**
+     * Before accessing data for the first time, init, sort and lock all data once.
+     */
+    void freeze() {
+        if (frozen) return;
+
+        eventsList = Collections.unmodifiableList(eventsList.stream()
+                .sorted(Comparator.comparing(link -> link.created_at)).collect(Collectors.toList()));
+        commentsList = Collections.unmodifiableList(commentsList.stream()
+                .distinct().sorted(Comparator.comparing(link -> link.referenced_at)).collect(Collectors.toList()));
+        if (relatedIssuesList == null) {
+            relatedIssuesList = relatedIssues.stream().map(id ->
+                    new ReferencedLink<>(repo.getIssueFromCache(id.target), id.user, id.referenced_at)
+            ).collect(Collectors.toList());
+        }
+        relatedIssuesList = Collections.unmodifiableList(relatedIssuesList.stream()
+                .distinct().sorted(Comparator.comparing(link -> link.referenced_at)).collect(Collectors.toList()));
+        relatedCommits = Collections.unmodifiableList(relatedCommits.stream()
+                // Remove invalid commits before they cause problems
+                .filter(c -> c.getTarget() != null && c.getTarget().getAuthorTime() != null)
+                .distinct().sorted(Comparator.comparing(link -> link.referenced_at)).collect(Collectors.toList()));
+
+        frozen = true;
+    }
+
+    /**
+     * Gets the number of the issue (referenced with {@code #nr}).
+     *
+     * @return the number
+     */
+    public int getNumber() {
+        return number;
+    }
+
+    /**
+     * Gets data about the User that created the issue.
+     *
+     * @return the user
+     */
+    public UserData getUser() {
+        return user;
+    }
+
+    /**
+     * Gets information about the state of the issue.
+     *
+     * @return the state
+     */
+    public State getState() {
+        return state;
+    }
+
+    /**
+     * Gets the date and time the issue was created.
+     *
+     * @return date and time the issue was created
+     */
+    public OffsetDateTime getCreateDate() {
+        return created_at;
+    }
+
+    /**
+     * Gets he date and time the issue was closed.
+     *
+     * @return date and time the issue was closed, or {@code null} if it is still open.
+     */
+    @Nullable
+    public OffsetDateTime getCloseDate() {
+        return closed_at;
+    }
+
+    /**
+     * Checks if this issue is a pull request.
+     *
+     * @return {@code true} if it is a PullRequest.
+     * @see PullRequestData
+     * @see PullRequest
+     */
+    public boolean isPullRequest() {
+        return isPullRequest;
+    }
+
+    /**
+     * Gets the title of the issue.
+     *
+     * @return the text title.
+     */
+    public String getTitle() {
+        return title;
+    }
+
+    /**
+     * Gets teh text body.
+     *
+     * @return the text body.
+     */
+    public String getBody() {
+        return body;
+    }
+
+    /**
+     * Gets the HTML URL to this issue.
+     *
+     * @return the URL
+     */
+    public String getUrl() {
+        return url;
+    }
+
 
     /**
      * Gets a List of all comments.
@@ -119,98 +232,6 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      */
     public List<ReferencedLink<IssueData>> getRelatedIssues() {
         return relatedIssuesList;
-    }
-
-    /**
-     * Before accessing data for the first time, init, sort and lock all data once.
-     */
-    void freeze() {
-        if (frozen) return;
-
-        eventsList = Collections.unmodifiableList(eventsList.stream()
-                .sorted(Comparator.comparing(link -> link.created_at)).collect(Collectors.toList()));
-        commentsList = Collections.unmodifiableList(commentsList.stream()
-                .sorted(Comparator.comparing(link -> link.referenced_at)).collect(Collectors.toList()));
-        if (relatedIssuesList == null) {
-            relatedIssuesList = relatedIssues.stream().map(id ->
-                    new ReferencedLink<>(repo.getIssueFromCache(id.target), id.user, id.referenced_at)
-            ).collect(Collectors.toList());
-        }
-        relatedIssuesList = Collections.unmodifiableList(relatedIssuesList.stream()
-                .sorted(Comparator.comparing(link -> link.referenced_at)).collect(Collectors.toList()));
-        relatedCommits = Collections.unmodifiableList(relatedCommits.stream()
-                // Remove invalid commits before they cause problems
-                .filter(c -> c.getTarget() != null && c.getTarget().getAuthorTime() != null)
-                .sorted(Comparator.comparing(link -> link.referenced_at)).collect(Collectors.toList()));
-
-        frozen = true;
-    }
-
-    /**
-     * The number of the issue (referenced with {@code #nr}).
-     */
-    public int getNumber() {
-        return number;
-    }
-
-    /**
-     * Data about the User that created the issue.
-     */
-    public UserData getUser() {
-        return user;
-    }
-
-    /**
-     * Information about the state of the issue.
-     */
-    public State getState() {
-        return state;
-    }
-
-    /**
-     * The date and time the issue was created.
-     */
-    public OffsetDateTime getCreateDate() {
-        return created_at;
-    }
-
-    /**
-     * The date and time the issue was closed, or null if it is still open.
-     */
-    @Nullable
-    public OffsetDateTime getCloseDate() {
-        return closed_at;
-    }
-
-    /**
-     * {@code true} if it is a PullRequest.
-     *
-     * @see PullRequestData
-     * @see PullRequest
-     */
-    public boolean isPullRequest() {
-        return isPullRequest;
-    }
-
-    /**
-     * the text title.
-     */
-    public String getTitle() {
-        return title;
-    }
-
-    /**
-     * The text body.
-     */
-    public String getBody() {
-        return body;
-    }
-
-    /**
-     * The HTML URL to this issue.
-     */
-    public String getUrl() {
-        return url;
     }
 
     @Override
