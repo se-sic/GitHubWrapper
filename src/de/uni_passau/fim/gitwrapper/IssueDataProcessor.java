@@ -166,8 +166,16 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         IssueData cached = cache.get(number);
         // check cache -> update and short circuit
         if (cached != null) {
-            cached.body = json.getAsJsonObject().get("body").getAsString();
-            cached.title = json.getAsJsonObject().get("title").getAsString();
+            if (!json.getAsJsonObject().get("body").isJsonNull()) {
+                cached.body = json.getAsJsonObject().get("body").getAsString();
+            } else {
+                cached.body = "";
+            }
+            if (!json.getAsJsonObject().get("body").isJsonNull()) {
+                cached.title = json.getAsJsonObject().get("title").getAsString();
+            } else {
+                cached.title = "";
+            }
             cached.repo = repo;
             return cached;
         }

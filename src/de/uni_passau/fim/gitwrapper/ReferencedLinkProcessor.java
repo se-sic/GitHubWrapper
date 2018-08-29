@@ -27,8 +27,13 @@ public class ReferencedLinkProcessor implements JsonDeserializer<ReferencedLink>
     public ReferencedLink deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
         ReferencedLink result = new ReferencedLink<>();
         if (json.getAsJsonObject().get("type") == null) {
+            // comment from github
             result = new ReferencedLink<String>();
-            result.target = json.getAsJsonObject().get("body").getAsString();
+            if (!json.getAsJsonObject().get("body").isJsonNull()) {
+                result.target = json.getAsJsonObject().get("body").getAsString();
+            } else {
+                result.target = "";
+            }
         } else switch (json.getAsJsonObject().get("type").getAsString()) {
             case "comment":
                 result = new ReferencedLink<String>();
