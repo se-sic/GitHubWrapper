@@ -6,6 +6,7 @@ import de.uni_passau.fim.gitwrapper.GitHubRepository.IssueDataCached;
 import io.gsonfire.PostProcessor;
 
 import java.lang.reflect.Type;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -247,10 +248,24 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
                 //noinspection unchecked
                 json.ifPresent(data -> commits.addAll(
                         ((List<Commit>) gson.fromJson(data, new TypeToken<ArrayList<Commit>>() {}.getType())).stream().map(c -> {
+                            // Try to get committer data (currently not supported) -> TODO
                             UserData user = new UserData();
                             user.email = c.getCommitterMail();
                             user.name = c.getCommitter();
-                            return new ReferencedLink<>(c, user, c.getCommitterTime());
+                            OffsetDateTime time = c.getCommitterTime();
+                            // otherwise get author data, close enough
+                            if (user.email == null && user.name == null && time == null) {
+                                user.email = c.getAuthorMail();
+                                user.name = c.getAuthor();
+                                time = c.getAuthorTime();
+                            }
+                            // if it still fails, make sure that we have data, even if it's just fomr the issue
+                            if (user.email == null && user.name == null && time == null) {
+                                user = result.user;
+                                time = result.created_at;
+                            }
+
+                            return new ReferencedLink<>(c, user, time);
                         }).collect(Collectors.toList())));
             }
 

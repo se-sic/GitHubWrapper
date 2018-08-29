@@ -94,21 +94,24 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     void freeze() {
         if (frozen) return;
 
-        eventsList = Collections.unmodifiableList(eventsList.stream()
-                .sorted(Comparator.comparing(link -> link.created_at)).collect(Collectors.toList()));
-        commentsList = Collections.unmodifiableList(commentsList.stream()
-                .distinct().sorted(Comparator.comparing(link -> link.referenced_at)).collect(Collectors.toList()));
+        Comparator<ReferencedLink> compare = Comparator.comparing(ReferencedLink::getLinkTime);
+
         if (relatedIssuesList == null) {
             relatedIssuesList = relatedIssues.stream().map(id ->
                     new ReferencedLink<>(repo.getIssueFromCache(id.target), id.user, id.referenced_at)
             ).collect(Collectors.toList());
         }
+
+        eventsList = Collections.unmodifiableList(eventsList.stream()
+                .sorted(Comparator.comparing(link -> link.created_at)).collect(Collectors.toList()));
+        commentsList = Collections.unmodifiableList(commentsList.stream()
+                .sorted(compare).collect(Collectors.toList()));
         relatedIssuesList = Collections.unmodifiableList(relatedIssuesList.stream()
-                .distinct().sorted(Comparator.comparing(link -> link.referenced_at)).collect(Collectors.toList()));
+                .distinct().sorted(compare).collect(Collectors.toList()));
         relatedCommits = Collections.unmodifiableList(relatedCommits.stream()
                 // Remove invalid commits before they cause problems
-                .filter(c -> c.getTarget() != null && c.getTarget().getAuthorTime() != null)
-                .distinct().sorted(Comparator.comparing(link -> link.referenced_at)).collect(Collectors.toList()));
+                .filter(c -> c != null && c.getTarget() != null && c.getTarget().getAuthorTime() != null)
+                .distinct().sorted(compare).collect(Collectors.toList()));
 
         frozen = true;
     }
