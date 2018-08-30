@@ -234,11 +234,11 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
         if (result.getCommentsList() == null) {
             Optional<List<ReferencedLink<String>>> comments = repo.getComments(lookup);
-            comments.ifPresent(result::setComments);
+            result.setComments(comments.orElse(Collections.emptyList()));
         }
         if (result.getEventsList() == null) {
             Optional<List<EventData>> events = repo.getEvents(lookup);
-            events.ifPresent(result::setEvents);
+            result.setEvents(events.orElse(Collections.emptyList()));
         }
 
         if (result.getRelatedCommits() == null) {
