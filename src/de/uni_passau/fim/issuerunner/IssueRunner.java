@@ -212,6 +212,15 @@ public class IssueRunner {
                 }
             }
         });
+
+        if (finalRepoListFile != null) {
+            try {
+                finalRepoListFile.flush();
+                finalRepoListFile.close();
+            } catch (IOException e) {
+                LOG.severe("Could not write repo list to file: " + e);
+            }
+        }
     }
 
     private static List<String> getLinesFromFile(File file) {
