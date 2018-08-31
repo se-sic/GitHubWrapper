@@ -24,7 +24,7 @@ public class IssueRunner {
 
     @Option(name = "-repoList",
             metaVar = "list.txt",
-            depends = {"-outDir"},
+            depends = {"-outputDir"},
             forbids = {"-repo"},
             usage = "List of URLs for GitHub repositories to analyze. To use an existing dump as cache and update it, " +
                     "add the ISO 8601 date of dump creation followed by the path to the JSON file separated with spaces.")
