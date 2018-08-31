@@ -629,6 +629,7 @@ public class GitHubRepository extends Repository {
                     tokenWaitList.add(Thread.currentThread());
                     Thread.sleep(getTokenResetTime().minusMillis(System.currentTimeMillis()).toEpochMilli());
                 } catch (InterruptedException e) {
+                    tokenWaitList.removeIf(t -> t.equals(Thread.currentThread()));
                     return getValidToken();
                 }
                 return getValidToken();
@@ -664,7 +665,7 @@ public class GitHubRepository extends Repository {
         synchronized (tokens) {
             if (tokens.stream().anyMatch(Token::isUsable)) return Instant.now();
             if (tokens.stream().anyMatch(Token::isValid))  return Instant.now().plusSeconds(10);
-            return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).get();
+            return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).orElse(Instant.MAX);
         }
     }
 
