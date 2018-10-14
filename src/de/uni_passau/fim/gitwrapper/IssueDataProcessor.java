@@ -183,13 +183,13 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
         // check if pr directly from github
         JsonElement pr = json.getAsJsonObject().get("pull_request");
-        if(pr != null) {
+        if (pr != null) {
             // get additional data
-            String data = repo.getJSONStringFromURL(pr.getAsJsonObject().get("url").getAsString())
-                    .orElseThrow(() -> new JsonParseException("Could not get PullRequest data for issue: " + number + " in repo " + repo));
-            PullRequestData result = context.deserialize(parser.parse(data), new TypeToken<PullRequestData>() {}.getType());
-            result.repo = repo;
-            return result;
+            return repo.getJSONStringFromURL(pr.getAsJsonObject().get("url").getAsString()).map(data -> {
+                PullRequestData result = context.deserialize(parser.parse(data), new TypeToken<PullRequestData>() {}.getType());
+                result.repo = repo;
+                return result;
+            }).orElse(null);
         }
 
         // check if pr from local dump, we then already have all data

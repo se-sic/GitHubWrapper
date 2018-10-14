@@ -56,6 +56,7 @@ public class GitHubRepository extends Repository {
 
     private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
     private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(true);
+	private final AtomicBoolean offline = new AtomicBoolean(false);
 
     private final ForkJoinPool threadPool;
 
@@ -162,7 +163,9 @@ public class GitHubRepository extends Repository {
         Gson tempGson = gb.create();
 
         // read cache and fill up missing issue data
+		offline.set(true);
         List<IssueData> issues = new ArrayList<>(tempGson.fromJson(new BufferedReader(new FileReader(issueCache)), new TypeToken<List<IssueDataCached>>() {}.getType()));
+		offline.set(false);
         issueProcessor.addCache(issues);
         issues.forEach(IssueData::freeze);
 
@@ -276,6 +279,7 @@ public class GitHubRepository extends Repository {
                     Callable<List<IssueData>> converter = () ->
                             list.parallelStream()
                                     .map(element -> (IssueData) (gson.fromJson(element, finalType)))
+                                    .filter(Objects::nonNull)
                                     .collect(Collectors.toList());
                     data = threadPool.submit(converter).join();
 
@@ -587,7 +591,7 @@ public class GitHubRepository extends Repository {
                 } while (true);
 
             } finally {
-                if (token != null) releaseToken(token);
+                if (token != null && token.isHeld()) releaseToken(token);
             }
 
             // concatenate all results together, making one large JSON string
@@ -627,7 +631,7 @@ public class GitHubRepository extends Repository {
                 try {
                     LOG.info(String.format("Waiting until %s before the next token is available.", getTokenResetTime()));
                     tokenWaitList.add(Thread.currentThread());
-                    Thread.sleep(getTokenResetTime().minusMillis(System.currentTimeMillis()).toEpochMilli());
+                    Thread.sleep(Math.max(1 , getTokenResetTime().minusMillis(System.currentTimeMillis()).toEpochMilli()));
                 } catch (InterruptedException e) {
                     tokenWaitList.removeIf(t -> t.equals(Thread.currentThread()));
                     return getValidToken();
@@ -746,9 +750,14 @@ public class GitHubRepository extends Repository {
      * to a Commit with the given hash
      */
     Optional<Commit> getGithubCommit(String hash) {
-        return checkedHashes.computeIfAbsent(hash, x ->
-                getJSONStringFromURL(apiBaseURL + "/commits/" + hash).map(commitInfo ->
-                        gson.fromJson(commitInfo, new TypeToken<Commit>() {}.getType())));
+        return checkedHashes.computeIfAbsent(hash, x -> {
+			if (offline.get()) {
+				return Optional.of(getCommitUnchecked(DummyCommit.DUMMY_COMMIT_ID));
+			} else {
+				return getJSONStringFromURL(apiBaseURL + "/commits/" + hash).map(commitInfo ->
+                        gson.fromJson(commitInfo, new TypeToken<Commit>() {}.getType()));
+			}
+		});
     }
 
     /**

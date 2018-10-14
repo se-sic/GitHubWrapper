@@ -4,10 +4,10 @@ import com.google.gson.Gson;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 
+import javax.annotation.Nullable;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
 
 /**
  * Data object for information about Issues.
@@ -68,7 +68,6 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *
      * @param commits
      *         the Commit list
-     * @see IssueDataProcessor#parseCommits(IssueData)
      */
     void setRelatedCommits(List<ReferencedLink<Commit>> commits) {
         relatedCommits = commits;
@@ -103,11 +102,11 @@ public class IssueData implements GitHubRepository.IssueDataCached {
         }
 
         eventsList = Collections.unmodifiableList(eventsList.stream()
-                .sorted(Comparator.comparing(link -> link.created_at)).collect(Collectors.toList()));
+                .filter(Objects::nonNull).sorted(Comparator.comparing(link -> link.created_at)).collect(Collectors.toList()));
         commentsList = Collections.unmodifiableList(commentsList.stream()
-                .sorted(compare).collect(Collectors.toList()));
+                .filter(Objects::nonNull).sorted(compare).collect(Collectors.toList()));
         relatedIssuesList = Collections.unmodifiableList(relatedIssuesList.stream()
-                .distinct().sorted(compare).collect(Collectors.toList()));
+                .filter(Objects::nonNull).distinct().sorted(compare).collect(Collectors.toList()));
         relatedCommits = Collections.unmodifiableList(relatedCommits.stream()
                 // Remove invalid commits before they cause problems
                 .filter(c -> c != null && c.getTarget() != null && c.getTarget().getAuthorTime() != null)
