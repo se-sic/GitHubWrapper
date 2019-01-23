@@ -4,10 +4,10 @@ import com.google.gson.Gson;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 
+import javax.annotation.Nullable;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
 
 /**
  * Data object for information about Issues.
@@ -27,62 +27,185 @@ public class IssueData implements GitHubRepository.IssueDataCached {
 
     @SerializedName(value = "url", alternate = {"html_url"}) String url;
 
-    private List<CommentData> commentsList;
+    private List<ReferencedLink<String>> commentsList;
     private List<EventData> eventsList;
-    private List<Commit> relatedCommits;
-    // we serialize this list manually, since it may contain circles and even if not adds a lot of repetitive data
-    private transient List<IssueData> relatedIssues = new ArrayList<>();
+    private List<ReferencedLink<Commit>> relatedCommits;
+    List<ReferencedLink<Integer>> relatedIssues;
 
+    // we serialize this list manually, since it may contain circles and even if not adds a lot of repetitive data
+    private transient List<ReferencedLink<IssueData>> relatedIssuesList = new ArrayList<>();
+
+    transient GitHubRepository repo;
     private transient boolean frozen;
 
     /**
-     * Adds a list of Comments to this Issue.
+     * Creates a new IssueData object.
+     */
+    IssueData() { }
+
+    /**
+     * Sets a list of Comments to this Issue.
      *
      * @param comments
      *         the Comment list
      */
-    public void addComments(List<CommentData> comments) {
+    void setComments(List<ReferencedLink<String>> comments) {
         commentsList = comments;
     }
 
     /**
-     * Adds a list of Events to this Issue.
+     * Sets a list of Events to this Issue.
      *
      * @param events
      *         the Event list.
      */
-    public void addEvents(List<EventData> events) {
+    void setEvents(List<EventData> events) {
         eventsList = events;
     }
 
     /**
-     * Adds a related Commit to this Issue.
+     * Sets a related Commit to this Issue.
      *
      * @param commits
      *         the Commit list
-     * @see IssueDataProcessor#parseCommits(IssueData)
      */
-    public void addRelatedCommits(List<Commit> commits) {
+    void setRelatedCommits(List<ReferencedLink<Commit>> commits) {
         relatedCommits = commits;
     }
 
     /**
-     * Adds a related Issue to this Issue.
+     * Sets a related Issue to this Issue.
      *
      * @param issues
      *         the issue.
      * @see IssueDataProcessor#parseIssues(IssueData, Gson)
      */
-    public void addRelatedIssues(List<IssueData> issues) {
-        relatedIssues = issues;
+    void setRelatedIssues(List<ReferencedLink<IssueData>> issues) {
+        relatedIssues = issues.stream().map(issue ->
+                new ReferencedLink<>(issue.target.number, issue.user, issue.referenced_at)
+        ).collect(Collectors.toList());
+        relatedIssuesList = issues;
     }
 
     /**
-     * Gets a List of all Comments
-     *
-     * @return a List of CommentData
+     * Before accessing data for the first time, init, sort and lock all data once.
      */
-    public List<CommentData> getCommentsList() {
+    void freeze() {
+        if (frozen) return;
+
+        Comparator<ReferencedLink> compare = Comparator.comparing(ReferencedLink::getLinkTime);
+
+        if (relatedIssuesList == null) {
+            relatedIssuesList = relatedIssues.stream().map(id ->
+                    new ReferencedLink<>(repo.getIssueFromCache(id.target), id.user, id.referenced_at)
+            ).collect(Collectors.toList());
+        }
+
+        eventsList = Collections.unmodifiableList(eventsList.stream()
+                .filter(Objects::nonNull).sorted(Comparator.comparing(link -> link.created_at)).collect(Collectors.toList()));
+        commentsList = Collections.unmodifiableList(commentsList.stream()
+                .filter(Objects::nonNull).sorted(compare).collect(Collectors.toList()));
+        relatedIssuesList = Collections.unmodifiableList(relatedIssuesList.stream()
+                .filter(Objects::nonNull).distinct().sorted(compare).collect(Collectors.toList()));
+        relatedCommits = Collections.unmodifiableList(relatedCommits.stream()
+                // Remove invalid commits before they cause problems
+                .filter(c -> c != null && c.getTarget() != null && c.getTarget().getAuthorTime() != null)
+                .distinct().sorted(compare).collect(Collectors.toList()));
+
+        frozen = true;
+    }
+
+    /**
+     * Gets the number of the issue (referenced with {@code #nr}).
+     *
+     * @return the number
+     */
+    public int getNumber() {
+        return number;
+    }
+
+    /**
+     * Gets data about the User that created the issue.
+     *
+     * @return the user
+     */
+    public UserData getUser() {
+        return user;
+    }
+
+    /**
+     * Gets information about the state of the issue.
+     *
+     * @return the state
+     */
+    public State getState() {
+        return state;
+    }
+
+    /**
+     * Gets the date and time the issue was created.
+     *
+     * @return date and time the issue was created
+     */
+    public OffsetDateTime getCreateDate() {
+        return created_at;
+    }
+
+    /**
+     * Gets he date and time the issue was closed.
+     *
+     * @return date and time the issue was closed, or {@code null} if it is still open.
+     */
+    @Nullable
+    public OffsetDateTime getCloseDate() {
+        return closed_at;
+    }
+
+    /**
+     * Checks if this issue is a pull request.
+     *
+     * @return {@code true} if it is a PullRequest.
+     * @see PullRequestData
+     * @see PullRequest
+     */
+    public boolean isPullRequest() {
+        return isPullRequest;
+    }
+
+    /**
+     * Gets the title of the issue.
+     *
+     * @return the text title.
+     */
+    public String getTitle() {
+        return title;
+    }
+
+    /**
+     * Gets teh text body.
+     *
+     * @return the text body.
+     */
+    public String getBody() {
+        return body;
+    }
+
+    /**
+     * Gets the HTML URL to this issue.
+     *
+     * @return the URL
+     */
+    public String getUrl() {
+        return url;
+    }
+
+
+    /**
+     * Gets a List of all comments.
+     *
+     * @return a List of comments in form of ReferencedLink<String>
+     */
+    public List<ReferencedLink<String>> getCommentsList() {
         return commentsList;
     }
 
@@ -100,7 +223,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *
      * @return a List of Commits
      */
-    public List<Commit> getRelatedCommits() {
+    public List<ReferencedLink<Commit>> getRelatedCommits() {
         return relatedCommits;
     }
 
@@ -109,93 +232,8 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *
      * @return a List of IssueData
      */
-    public List<IssueData> getRelatedIssues() {
-        return relatedIssues;
-    }
-
-    /**
-     * Before accessing data for the first time, sort and lock all data once.
-     */
-    public void freeze() {
-        if (frozen) return;
-
-        eventsList = Collections.unmodifiableList(eventsList.stream()
-                .sorted(Comparator.comparing(event -> event.created_at)).collect(Collectors.toList()));
-        commentsList = Collections.unmodifiableList(commentsList.stream()
-                .sorted(Comparator.comparing((comment) -> comment.created_at)).collect(Collectors.toList()));
-        relatedIssues = Collections.unmodifiableList(relatedIssues.stream()
-                .sorted(Comparator.comparing(issue -> issue.created_at)).collect(Collectors.toList()));
-        relatedCommits = Collections.unmodifiableList(relatedCommits.stream()
-                // Remove invalid commits before they cause problems
-                .filter(c -> c.getAuthorTime() != null)
-                .sorted(Comparator.comparing(Commit::getAuthorTime)).collect(Collectors.toList()));
-    }
-
-    /**
-     * The number of the issue (referenced with {@code #nr}).
-     */
-    public int getNumber() {
-        return number;
-    }
-
-    /**
-     * Data about the User that created the issue.
-     */
-    public UserData getUser() {
-        return user;
-    }
-
-    /**
-     * Information about the state of the issue.
-     */
-    public State getState() {
-        return state;
-    }
-
-    /**
-     * The date and time the issue was created.
-     */
-    public OffsetDateTime getCreateDate() {
-        return created_at;
-    }
-
-    /**
-     * The date and time the issue was closed, or null if it is still open.
-     */
-    @Nullable
-    public OffsetDateTime getCloseDate() {
-        return closed_at;
-    }
-
-    /**
-     * {@code true} if it is a PullRequest.
-     *
-     * @see PullRequestData
-     * @see PullRequest
-     */
-    public boolean isPullRequest() {
-        return isPullRequest;
-    }
-
-    /**
-     * the text title.
-     */
-    public String getTitle() {
-        return title;
-    }
-
-    /**
-     * The text body.
-     */
-    public String getBody() {
-        return body;
-    }
-
-    /**
-     * The HTML URL to this issue.
-     */
-    public String getUrl() {
-        return url;
+    public List<ReferencedLink<IssueData>> getRelatedIssues() {
+        return relatedIssuesList;
     }
 
     @Override

@@ -15,7 +15,7 @@ public class PullRequestData extends IssueData {
     /**
      * For use by the deserializer.
      */
-    public PullRequestData() {
+    PullRequestData() {
         this.isPullRequest = true;
     }
 

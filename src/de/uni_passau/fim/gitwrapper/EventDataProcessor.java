@@ -37,6 +37,9 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         return context.serialize(src, src.getClass());
     }
 
+    /**
+     * Processor for events that reference commits.
+     */
     static class ReferencedEventProcessor implements PostProcessor<EventData.ReferencedEventData> {
 
         private GitHubRepository repo;
@@ -68,6 +71,9 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         public void postSerialize(JsonElement result, EventData.ReferencedEventData src, Gson gson) { }
     }
 
+    /**
+     * Processor for events that manipulate labels.
+     */
     static class LabeledEventProcessor implements PostProcessor<EventData.LabeledEventData> {
 
         @Override

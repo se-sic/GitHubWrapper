@@ -56,6 +56,7 @@ public class GitHubRepository extends Repository {
 
     private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
     private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(true);
+	private final AtomicBoolean offline = new AtomicBoolean(false);
 
     private final ForkJoinPool threadPool;
 
@@ -154,6 +155,7 @@ public class GitHubRepository extends Repository {
         GsonBuilder gb = new GsonFireBuilder().createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, new UserDataProcessor(this)));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
+        gb.registerTypeAdapter(ReferencedLink.class, new ReferencedLinkProcessor(this));
         gb.registerTypeAdapter(EventData.class, new EventDataProcessor());
         gb.registerTypeAdapter(OffsetDateTime.class, new OffsetDateTimerProcessor());
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -161,10 +163,11 @@ public class GitHubRepository extends Repository {
         Gson tempGson = gb.create();
 
         // read cache and fill up missing issue data
+		offline.set(true);
         List<IssueData> issues = new ArrayList<>(tempGson.fromJson(new BufferedReader(new FileReader(issueCache)), new TypeToken<List<IssueDataCached>>() {}.getType()));
+		offline.set(false);
         issueProcessor.addCache(issues);
-
-        issues.forEach(issueData -> issueData.addRelatedIssues(issueProcessor.parseIssues(issueData, tempGson)));
+        issues.forEach(IssueData::freeze);
 
         this.issues = issues;
 //        getPullRequests();
@@ -201,12 +204,15 @@ public class GitHubRepository extends Repository {
         }
         GsonFireBuilder gfb = new GsonFireBuilder();
         UserDataProcessor userProcessor = new UserDataProcessor(this);
+        ReferencedLinkProcessor referencedLinkProcessor = new ReferencedLinkProcessor(this);
         gfb.registerPostProcessor(IssueData.class, issueProcessor);
+        gfb.registerPostProcessor(ReferencedLink.class, referencedLinkProcessor);
         gfb.registerPostProcessor(EventData.ReferencedEventData.class, new EventDataProcessor.ReferencedEventProcessor(this));
         gfb.registerPostProcessor(EventData.LabeledEventData.class, new EventDataProcessor.LabeledEventProcessor());
         GsonBuilder gb = gfb.createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, userProcessor));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
+        gb.registerTypeAdapter(ReferencedLink.class, referencedLinkProcessor);
         gb.registerTypeAdapter(EventData.class, new EventDataProcessor());
         gb.registerTypeAdapter(UserData.class, userProcessor);
         gb.registerTypeAdapter(OffsetDateTime.class, new OffsetDateTimerProcessor());
@@ -273,6 +279,7 @@ public class GitHubRepository extends Repository {
                     Callable<List<IssueData>> converter = () ->
                             list.parallelStream()
                                     .map(element -> (IssueData) (gson.fromJson(element, finalType)))
+                                    .filter(Objects::nonNull)
                                     .collect(Collectors.toList());
                     data = threadPool.submit(converter).join();
 
@@ -286,7 +293,7 @@ public class GitHubRepository extends Repository {
                 return data;
             }).ifPresent(list -> {
                 Set<IssueData> all = new HashSet<>(list);
-                all.addAll(issueProcessor.getCache());
+                all.addAll(issueProcessor.getCache().values());
                 list = new ArrayList<>(all);
                 list.sort(Comparator.comparing(issue -> issue.created_at));
                 issues = Collections.unmodifiableList(list);
@@ -324,10 +331,10 @@ public class GitHubRepository extends Repository {
      *         the parent IssueData
      * @return optionally a list of CommentData or an empty Optional if an error occurred
      */
-    Optional<List<CommentData>> getComments(IssueData issue) {
+    Optional<List<ReferencedLink<String>>> getComments(IssueData issue) {
         return getJSONStringFromPath("/issues/" + issue.number + "/comments?state=all").map(json -> {
             try {
-                return gson.fromJson(json, new TypeToken<ArrayList<CommentData>>() {}.getType());
+                return gson.fromJson(json, new TypeToken<ArrayList<ReferencedLink>>() {}.getType());
             } catch (JsonSyntaxException e) {
                 LOG.warning("Encountered invalid JSON: " + json);
                 return null;
@@ -584,7 +591,7 @@ public class GitHubRepository extends Repository {
                 } while (true);
 
             } finally {
-                if (token != null) releaseToken(token);
+                if (token != null && token.isHeld()) releaseToken(token);
             }
 
             // concatenate all results together, making one large JSON string
@@ -624,8 +631,9 @@ public class GitHubRepository extends Repository {
                 try {
                     LOG.info(String.format("Waiting until %s before the next token is available.", getTokenResetTime()));
                     tokenWaitList.add(Thread.currentThread());
-                    Thread.sleep(getTokenResetTime().minusMillis(System.currentTimeMillis()).toEpochMilli());
+                    Thread.sleep(Math.max(1 , getTokenResetTime().minusMillis(System.currentTimeMillis()).toEpochMilli()));
                 } catch (InterruptedException e) {
+                    tokenWaitList.removeIf(t -> t.equals(Thread.currentThread()));
                     return getValidToken();
                 }
                 return getValidToken();
@@ -661,7 +669,7 @@ public class GitHubRepository extends Repository {
         synchronized (tokens) {
             if (tokens.stream().anyMatch(Token::isUsable)) return Instant.now();
             if (tokens.stream().anyMatch(Token::isValid))  return Instant.now().plusSeconds(10);
-            return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).get();
+            return tokens.stream().map(Token::getResetTime).min(Comparator.naturalOrder()).orElse(Instant.MAX);
         }
     }
 
@@ -742,9 +750,14 @@ public class GitHubRepository extends Repository {
      * to a Commit with the given hash
      */
     Optional<Commit> getGithubCommit(String hash) {
-        return checkedHashes.computeIfAbsent(hash, x ->
-                getJSONStringFromURL(apiBaseURL + "/commits/" + hash).map(commitInfo ->
-                        gson.fromJson(commitInfo, new TypeToken<Commit>() {}.getType())));
+        return checkedHashes.computeIfAbsent(hash, x -> {
+			if (offline.get()) {
+				return Optional.of(getCommitUnchecked(DummyCommit.DUMMY_COMMIT_ID));
+			} else {
+				return getJSONStringFromURL(apiBaseURL + "/commits/" + hash).map(commitInfo ->
+                        gson.fromJson(commitInfo, new TypeToken<Commit>() {}.getType()));
+			}
+		});
     }
 
     /**
@@ -810,6 +823,10 @@ public class GitHubRepository extends Repository {
                             new PullRequest(this, State.getPRState(prd.state, prd.merged_at != null),
                                     getBranch("origin/" + prd.base.ref).orElse(null), /*TODO*/ null, prd));
         }
+    }
+
+    IssueData getIssueFromCache(Integer target) {
+        return issueProcessor.getCache().get(target);
     }
 
     /**
