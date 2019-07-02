@@ -3,6 +3,7 @@ package de.uni_passau.fim.gitwrapper;
 import com.google.gson.annotations.SerializedName;
 
 import java.time.OffsetDateTime;
+import java.util.*;
 
 /**
  * Data representation of a review.
@@ -14,6 +15,8 @@ public class ReviewData {
     OffsetDateTime submitted_at;
     String state;
     boolean hasReviewInitialComment;
+
+    private List<ReferencedLink<String>> reviewComments;
 
     @SerializedName(value = "reviewId", alternate = {"id"})
     int reviewId; // necessary for joining reviews and their commits, will be removed by the corresponding processor
@@ -48,6 +51,23 @@ public class ReviewData {
      */
     public boolean hasReviewInitialComment() {
         return hasReviewInitialComment;
+    }
+
+    /**
+     * This list of comments belonging to a review.
+     */
+    public List<ReferencedLink<String>> getReviewComments() {
+        return reviewComments;
+    }
+
+    /**
+     * Sets a list of comments to this review.
+     *
+     * @param reviewComments
+     *         the list of related review comments
+     */
+    void setReviewComments(List<ReferencedLink<String>> reviewComments) {
+        this.reviewComments = reviewComments;
     }
 
     /**

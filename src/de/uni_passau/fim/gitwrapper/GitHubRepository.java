@@ -3,6 +3,7 @@ package de.uni_passau.fim.gitwrapper;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.processexecutor.ProcessExecutor;
@@ -382,8 +383,54 @@ public class GitHubRepository extends Repository {
                         // Only if there is, at least, one comment that is not a reply, we actually have found a review
                         return nonReplyComments.size() > 0;
                     }
-
                 }).collect(Collectors.toList());
+
+                // Get the review comments for all actual reviews
+                actualReviews = actualReviews.stream().map(review -> {
+                    int reviewId = review.getReviewId();
+
+                    // Build a map of comment ids to review ids. This is necessary as the review id of the comment may point to an invalid review.
+                    ConcurrentHashMap<Integer,Integer> commentReviewMap = new ConcurrentHashMap<Integer,Integer>();
+
+                    // Get related comments, that is, comments that belong to the review of interest
+                    List<JsonElement> relatedComments = reviewComments.get().stream().filter(reviewComment -> {
+                        JsonObject reviewCommentObject = gson.fromJson(reviewComment, JsonElement.class).getAsJsonObject();
+                        Integer refReviewId = reviewCommentObject.get("pull_request_review_id").getAsInt();
+
+                        if(reviewId == refReviewId) {
+                            commentReviewMap.put(reviewCommentObject.get("id").getAsInt(), reviewCommentObject.get("pull_request_review_id").getAsInt());
+                            return true;
+                        } else {
+                            JsonElement inReplyTo = reviewCommentObject.get("in_reply_to_id");
+
+                            // If this is not a reply, drop this comment, as the comment does not belong to the review of interest
+                            if(inReplyTo == null) {
+                                return false;
+                            } else {
+
+                                // Comment is a reply. Now we need to check whether to referenced comment belongs to the review of interest.
+                                refReviewId = commentReviewMap.get(inReplyTo.getAsInt());
+
+                                if (refReviewId != null && refReviewId == reviewId) {
+                                    commentReviewMap.put(reviewCommentObject.get("id").getAsInt(), refReviewId);
+                                    return true;
+                                } else {
+                                    return false;
+                                }
+                            }
+                        }
+                    }).collect(Collectors.toList());
+
+                    List<ReferencedLink<String>> relatedReviewComments = relatedComments.stream().map(comment -> {
+                        String c = gson.toJson(comment);
+                        ReferencedLink<String> r = gson.fromJson(c, new TypeToken<ReferencedLink<String>>() {}.getType());
+                        return r;
+                    }).collect(Collectors.toList());
+
+                    review.setReviewComments(Optional.of(relatedReviewComments).orElse(Collections.emptyList()));
+                    return review;
+                }).collect(Collectors.toList());
+
                 return actualReviews;
             } catch (JsonSyntaxException e) {
                 LOG.warning("Encountered invalid JSON: " + json);

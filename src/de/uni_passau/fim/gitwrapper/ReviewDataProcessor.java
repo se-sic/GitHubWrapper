@@ -17,7 +17,8 @@ class ReviewDataProcessor implements JsonDeserializer<ReviewData>, JsonSerialize
 
     @Override
     public ReviewData deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
-        if(json.getAsJsonObject().get("body").getAsString().equals("")) {
+        JsonElement body = json.getAsJsonObject().get("body");
+        if(body != null && !body.isJsonNull() && body.getAsString().equals("")) {
             return context.deserialize(json, ReviewData.DefaultReviewData.class);
         } else {
             return context.deserialize(json, new TypeToken<ReviewData.ReviewInitialCommentData>() {}.getType());
