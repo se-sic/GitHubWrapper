@@ -157,6 +157,7 @@ public class GitHubRepository extends Repository {
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
         gb.registerTypeAdapter(ReferencedLink.class, new ReferencedLinkProcessor(this));
         gb.registerTypeAdapter(EventData.class, new EventDataProcessor());
+        gb.registerTypeAdapter(ReviewData.class, new ReviewDataProcessor());
         gb.registerTypeAdapter(OffsetDateTime.class, new OffsetDateTimerProcessor());
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
         gb.serializeNulls();
@@ -209,12 +210,14 @@ public class GitHubRepository extends Repository {
         gfb.registerPostProcessor(ReferencedLink.class, referencedLinkProcessor);
         gfb.registerPostProcessor(EventData.ReferencedEventData.class, new EventDataProcessor.ReferencedEventProcessor(this));
         gfb.registerPostProcessor(EventData.LabeledEventData.class, new EventDataProcessor.LabeledEventProcessor());
+        gfb.registerPostProcessor(ReviewData.ReviewInitialCommentData.class, new ReviewDataProcessor.ReviewInitialCommentDataProcessor(this));
         GsonBuilder gb = gfb.createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, userProcessor));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
         gb.registerTypeAdapter(ReferencedLink.class, referencedLinkProcessor);
         gb.registerTypeAdapter(EventData.class, new EventDataProcessor());
         gb.registerTypeAdapter(UserData.class, userProcessor);
+        gb.registerTypeAdapter(ReviewData.class, new ReviewDataProcessor());
         gb.registerTypeAdapter(OffsetDateTime.class, new OffsetDateTimerProcessor());
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
         gb.serializeNulls();
@@ -335,6 +338,71 @@ public class GitHubRepository extends Repository {
         return getJSONStringFromPath("/issues/" + issue.number + "/comments?state=all").map(json -> {
             try {
                 return gson.fromJson(json, new TypeToken<ArrayList<ReferencedLink>>() {}.getType());
+            } catch (JsonSyntaxException e) {
+                LOG.warning("Encountered invalid JSON: " + json);
+                return null;
+            }
+        });
+    }
+
+    /**
+     * Returns a List of Reviews for a Pull Request.
+     *
+     * @param issue
+     *         the parent IssueData
+     * @return optionally a list of ReviewData or an empty Optional if an error occurred
+     */
+    Optional<List<ReviewData>> getReviews(IssueData issue) {
+        return getJSONStringFromPath("/pulls/" + issue.number + "/reviews?state=all").map(json -> {
+            try {
+                List<ReviewData> reviews = gson.fromJson(json, new TypeToken<ArrayList<ReviewData>>() {}.getType());
+
+                /* As the reviews extracted from the GitHub API not only contain reviews, but also treats answers
+                 * (that is, comments) to reviews as separate reviews, we need to remove those reviews which are just
+                 * replies to other reviews.*/
+                Optional<List<JsonElement>> reviewComments = getReviewComments(issue);
+                List<ReviewData> actualReviews = reviews.stream().filter(review -> {
+                    int reviewId = review.getReviewId();
+
+                    // Get related comments, that is, comments that belong to the review of interest
+                    List<JsonElement> relatedComments = reviewComments.get().stream().filter(reviewComment -> {
+                        int refReviewId = gson.fromJson(reviewComment, JsonElement.class).getAsJsonObject().get("pull_request_review_id").getAsInt();
+                        return reviewId == refReviewId;
+                    }).collect(Collectors.toList());
+
+                    if (relatedComments.size() < 1) {
+                        // If there are no related comments for the review of interest, it actually is a review and not a comment
+                        return true;
+                    } else {
+                        // As there are related comments, check if there are comments that are *not* a reply.
+                        List<JsonElement> nonReplyComments = relatedComments.stream().filter(relatedComment -> {
+                            JsonElement inReplyTo = relatedComment.getAsJsonObject().get("in_reply_to_id");
+                            return (inReplyTo == null); // return (isNoReply);
+                        }).collect(Collectors.toList());
+                        // Only if there is, at least, one comment that is not a reply, we actually have found a review
+                        return nonReplyComments.size() > 0;
+                    }
+
+                }).collect(Collectors.toList());
+                return actualReviews;
+            } catch (JsonSyntaxException e) {
+                LOG.warning("Encountered invalid JSON: " + json);
+                return null;
+            }
+        });
+    }
+
+     /**
+     * Returns a List of Comments for all Reviews of a Pull Request.
+     *
+     * @param issue
+     *         the parent IssueData
+     * @return optionally a list of JsonElements or an empty Optional if an error occurred
+     */
+    Optional<List<JsonElement>> getReviewComments(IssueData issue) {
+        return getJSONStringFromPath("/pulls/" + issue.number + "/comments?state=all").map(json -> {
+            try {
+                return gson.fromJson(json, new TypeToken<ArrayList<JsonElement>>() {}.getType());
             } catch (JsonSyntaxException e) {
                 LOG.warning("Encountered invalid JSON: " + json);
                 return null;

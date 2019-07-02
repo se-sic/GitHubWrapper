@@ -241,6 +241,11 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
             result.setEvents(events.orElse(Collections.emptyList()));
         }
 
+        if (result.getReviewsList() == null && result.isPullRequest) {
+            Optional<List<ReviewData>> reviews = repo.getReviews(lookup);
+            result.setReviews(reviews.orElse(Collections.emptyList()));
+        }
+
         if (result.getRelatedCommits() == null) {
             List<ReferencedLink<Commit>> commits = parseCommits(result);
             if (result.isPullRequest) {

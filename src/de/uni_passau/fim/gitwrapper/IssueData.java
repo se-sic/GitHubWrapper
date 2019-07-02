@@ -29,6 +29,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
 
     private List<ReferencedLink<String>> commentsList;
     private List<EventData> eventsList;
+    private List<ReviewData> reviewsList;
     private List<ReferencedLink<Commit>> relatedCommits;
     List<ReferencedLink<Integer>> relatedIssues;
 
@@ -61,6 +62,16 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      */
     void setEvents(List<EventData> events) {
         eventsList = events;
+    }
+
+    /**
+     * Sets a list of Reviews to this Issue.
+     *
+     * @param reviews
+     *         the Review list
+     */
+    void setReviews(List<ReviewData> reviews) {
+        reviewsList = reviews;
     }
 
     /**
@@ -105,6 +116,8 @@ public class IssueData implements GitHubRepository.IssueDataCached {
                 .filter(Objects::nonNull).sorted(Comparator.comparing(link -> link.created_at)).collect(Collectors.toList()));
         commentsList = Collections.unmodifiableList(commentsList.stream()
                 .filter(Objects::nonNull).sorted(compare).collect(Collectors.toList()));
+        reviewsList = Collections.unmodifiableList(reviewsList.stream()
+                .filter(Objects::nonNull).sorted(Comparator.comparing(link -> link.submitted_at)).collect(Collectors.toList()));
         relatedIssuesList = Collections.unmodifiableList(relatedIssuesList.stream()
                 .filter(Objects::nonNull).distinct().sorted(compare).collect(Collectors.toList()));
         relatedCommits = Collections.unmodifiableList(relatedCommits.stream()
@@ -216,6 +229,15 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      */
     public List<EventData> getEventsList() {
         return eventsList;
+    }
+
+    /**
+     * Gets a List all Reviews.
+     *
+     * @return a List of ReviewData
+     */
+    public List<ReviewData> getReviewsList() {
+        return reviewsList;
     }
 
     /**
