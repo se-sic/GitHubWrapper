@@ -165,9 +165,9 @@ public class GitHubRepository extends Repository {
         Gson tempGson = gb.create();
 
         // read cache and fill up missing issue data
-		offline.set(true);
+        offline.set(true);
         List<IssueData> issues = new ArrayList<>(tempGson.fromJson(new BufferedReader(new FileReader(issueCache)), new TypeToken<List<IssueDataCached>>() {}.getType()));
-		offline.set(false);
+        offline.set(false);
         issueProcessor.addCache(issues);
         issues.forEach(IssueData::freeze);
 
