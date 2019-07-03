@@ -45,7 +45,7 @@ public class ReferencedLinkProcessor implements JsonDeserializer<ReferencedLink>
                 result.target = json.getAsJsonObject().get("number").getAsInt();
                 break;
             case "commit":
-                result = new ReferencedLink<Commit>();
+                result = new ReferencedLink<GitHubCommit>();
                 result.target = repo.getGithubCommit(json.getAsJsonObject().get("commit_id").getAsString()).orElse(null);
                 break;
             default:
@@ -82,6 +82,7 @@ public class ReferencedLinkProcessor implements JsonDeserializer<ReferencedLink>
                 result.getAsJsonObject().addProperty("number", ((Integer) src.getTarget()));
                 break;
             case "Commit":
+            case "GitHubCommit":
                 result.getAsJsonObject().addProperty("type", "commit");
                 result.getAsJsonObject().addProperty("commit_id", ((Commit) src.getTarget()).id);
                 break;

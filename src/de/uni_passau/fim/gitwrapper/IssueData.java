@@ -30,7 +30,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     private List<ReferencedLink<String>> commentsList;
     private List<EventData> eventsList;
     private List<ReviewData> reviewsList;
-    private List<ReferencedLink<Commit>> relatedCommits;
+    private List<ReferencedLink<GitHubCommit>> relatedCommits;
     List<ReferencedLink<Integer>> relatedIssues;
 
     // we serialize this list manually, since it may contain circles and even if not adds a lot of repetitive data
@@ -80,7 +80,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      * @param commits
      *         the Commit list
      */
-    void setRelatedCommits(List<ReferencedLink<Commit>> commits) {
+    void setRelatedCommits(List<ReferencedLink<GitHubCommit>> commits) {
         relatedCommits = commits;
     }
 
@@ -245,7 +245,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      *
      * @return a List of Commits
      */
-    public List<ReferencedLink<Commit>> getRelatedCommits() {
+    public List<ReferencedLink<GitHubCommit>> getRelatedCommits() {
         return relatedCommits;
     }
 

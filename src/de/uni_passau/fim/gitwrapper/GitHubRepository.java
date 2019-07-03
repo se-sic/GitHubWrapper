@@ -52,8 +52,8 @@ public class GitHubRepository extends Repository {
     private final String apiBaseURL;
     private List<PullRequest> pullRequests;
     private List<IssueData> issues;
-    private Map<String, Commit> unknownCommits = new ConcurrentHashMap<>();
-    private Map<String, Optional<Commit>> checkedHashes = new ConcurrentHashMap<>();
+    private Map<String, GitHubCommit> unknownCommits = new ConcurrentHashMap<>();
+    private Map<String, Optional<GitHubCommit>> checkedHashes = new ConcurrentHashMap<>();
 
     private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
     private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(true);
@@ -155,6 +155,7 @@ public class GitHubRepository extends Repository {
         }
         GsonBuilder gb = new GsonFireBuilder().createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, new UserDataProcessor(this)));
+        gb.registerTypeAdapter(GitHubCommit.class, new GitHubCommitProcessor(this, new UserDataProcessor(this)));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
         gb.registerTypeAdapter(ReferencedLink.class, new ReferencedLinkProcessor(this));
         gb.registerTypeAdapter(EventData.class, new EventDataProcessor());
@@ -214,6 +215,7 @@ public class GitHubRepository extends Repository {
         gfb.registerPostProcessor(ReviewData.ReviewInitialCommentData.class, new ReviewDataProcessor.ReviewInitialCommentDataProcessor(this));
         GsonBuilder gb = gfb.createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, userProcessor));
+        gb.registerTypeAdapter(GitHubCommit.class, new GitHubCommitProcessor(this, userProcessor));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
         gb.registerTypeAdapter(ReferencedLink.class, referencedLinkProcessor);
         gb.registerTypeAdapter(EventData.class, new EventDataProcessor());
@@ -864,15 +866,15 @@ public class GitHubRepository extends Repository {
      * @return optionally a Commit, or an empty Optional, if neither the local repository nor GitHub have a reference
      * to a Commit with the given hash
      */
-    Optional<Commit> getGithubCommit(String hash) {
+    Optional<GitHubCommit> getGithubCommit(String hash) {
         return checkedHashes.computeIfAbsent(hash, x -> {
-			if (offline.get()) {
-				return Optional.of(getCommitUnchecked(DummyCommit.DUMMY_COMMIT_ID));
-			} else {
-				return getJSONStringFromURL(apiBaseURL + "/commits/" + hash).map(commitInfo ->
-                        gson.fromJson(commitInfo, new TypeToken<Commit>() {}.getType()));
-			}
-		});
+            if (offline.get()) {
+                return Optional.of(getGHCommitUnchecked(DummyCommit.DUMMY_COMMIT_ID));
+            } else {
+                return getJSONStringFromURL(apiBaseURL + "/commits/" + hash).map(commitInfo ->
+                    gson.fromJson(commitInfo, new TypeToken<GitHubCommit>() {}.getType()));
+            }
+        });
     }
 
     /**
@@ -886,7 +888,24 @@ public class GitHubRepository extends Repository {
      *         Data about the Commit author
      * @return the new Commit
      */
-    Commit getReferencedCommit(String hash, String message, UserData.CommitUserData author) {
+    GitHubCommit getReferencedCommit(String hash, String message, UserData.CommitUserData author) {
+        return getReferencedCommit(hash, message, author, null);
+    }
+
+    /**
+     * Creates a new Commit with the given data, and tries to fill in the  missing data from the local Repository
+     *
+     * @param hash
+     *         the sha1 hash of the Commit
+     * @param message
+     *         the commit messages
+     * @param author
+     *         Data about the Commit author
+     * @param committer
+     *         Data about the Commit committer
+     * @return the new Commit
+     */
+    GitHubCommit getReferencedCommit(String hash, String message, UserData.CommitUserData author, UserData.CommitUserData committer) {
         // Disable logging for this method call, so false positives don't reported
         Logger repoLog = Logger.getLogger(Repository.class.getCanonicalName());
         Logger commitLog = Logger.getLogger(Commit.class.getCanonicalName());
@@ -895,14 +914,19 @@ public class GitHubRepository extends Repository {
         repoLog.setLevel(Level.OFF);
         commitLog.setLevel(Level.OFF);
 
-        Commit commit = getCommitUnchecked(hash);
+        GitHubCommit commit = getGHCommitUnchecked(hash);
 
-        // init and check if data present, otherwise init manually
-        if (commit.getAuthor() == null) {
-            commit.setAuthor(author.name);
-            commit.setAuthorMail(author.email);
-            commit.setAuthorTime(author.date);
-            commit.setMessage(message);
+        commit.setAuthor(author.name);
+        commit.setAuthorMail(author.email);
+        commit.setAuthorTime(author.date);
+        commit.setMessage(message);
+        commit.setAuthorUsername(author.githubUsername);
+
+        if(committer != null) {
+            commit.setCommitter(committer.name);
+            commit.setCommitterMail(committer.email);
+            commit.setCommitterTime(committer.date);
+            commit.setCommitterUsername(committer.githubUsername);
         }
 
         // Reset logging
@@ -912,9 +936,39 @@ public class GitHubRepository extends Repository {
         return commit;
     }
 
+    /**
+     * Returns a {@link GitHubCommit} for the given ID. The caller must ensure that the ID is a full SHA1 hash of a
+     * commit that exists in this repository.
+     *
+     * @param id
+     *         the ID for the {@link Commit}
+     * @return the {@link GitHubCommit}
+     * @see #getCommitUnchecked(String)
+     */
+    GitHubCommit getGHCommitUnchecked(String id) {
+        return getGHCommit(id).orElse(unknownCommits.computeIfAbsent(id, (key) -> new GitHubCommit(this, key)));
+    }
+
+     /**
+     * Optionally returns a {@link GitHubCommit} for the given ID. If the given ID does not designate a commit that exists
+     * in this {@link Repository}, an empty {@link Optional} will be returned. The ID will be resolved to a full SHA1 hash.
+     *
+     * @param id
+     *         the ID of the commit
+     * @return the {@link GitHubCommit} or an empty {@link Optional} if the ID is invalid or an exception occurs
+     */
+    public Optional<GitHubCommit> getGHCommit(String id) {
+        Optional<Commit> commit = Optional.ofNullable(super.getCommit(id).orElse(unknownCommits.get(id)));
+        Optional<GitHubCommit> ghCommit = Optional.empty();
+        if(commit.isPresent()) {
+            ghCommit = Optional.ofNullable(new GitHubCommit(commit.get(), this, commit.get().getId()));
+        }
+        return ghCommit;
+    }
+
     @Override
     Commit getCommitUnchecked(String id) {
-        return getCommit(id).orElse(unknownCommits.computeIfAbsent(id, (key) -> new Commit(this, key)));
+        return getCommit(id).orElse(unknownCommits.computeIfAbsent(id, (key) -> new GitHubCommit(this, key)));
     }
 
     @Override

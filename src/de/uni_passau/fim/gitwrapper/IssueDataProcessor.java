@@ -46,7 +46,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
      *         the IssueData
      * @return a List of all referenced Commits
      */
-    private List<ReferencedLink<Commit>> parseCommits(IssueData issue) {
+    private List<ReferencedLink<GitHubCommit>> parseCommits(IssueData issue) {
         Stream<ReferencedLink<List<String>>> commentCommits = issue.getCommentsList().stream().map(comment ->
                         new ReferencedLink<>(extractSHA1s(comment.target), comment.user, comment.referenced_at));
 
@@ -247,12 +247,12 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         }
 
         if (result.getRelatedCommits() == null) {
-            List<ReferencedLink<Commit>> commits = parseCommits(result);
+            List<ReferencedLink<GitHubCommit>> commits = parseCommits(result);
             if (result.isPullRequest) {
                 Optional<String> json = repo.getJSONStringFromURL(src.getAsJsonObject().get("commits_url").getAsString());
                 //noinspection unchecked
                 json.ifPresent(data -> commits.addAll(
-                        ((List<Commit>) gson.fromJson(data, new TypeToken<ArrayList<Commit>>() {}.getType())).stream().map(c -> {
+                        ((List<GitHubCommit>) gson.fromJson(data, new TypeToken<ArrayList<GitHubCommit>>() {}.getType())).stream().map(c -> {
                             // Try to get committer data (currently not supported) -> TODO
                             UserData user = new UserData();
                             user.email = c.getCommitterMail();
@@ -263,6 +263,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
                                 user.email = c.getAuthorMail();
                                 user.name = c.getAuthor();
                                 time = c.getAuthorTime();
+                                user.username = c.getAuthorUsername();
                             }
                             // if it still fails, make sure that we have data, even if it's just fomr the issue
                             if (user.email == null && user.name == null && time == null) {
