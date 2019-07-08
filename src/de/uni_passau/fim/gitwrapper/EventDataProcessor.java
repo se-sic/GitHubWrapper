@@ -25,6 +25,7 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         map.put("referenced", EventData.ReferencedEventData.class);
         map.put("merged", EventData.ReferencedEventData.class);
         map.put("closed", EventData.ReferencedEventData.class);
+        map.put("review_requested", EventData.RequestedReviewEventData.class);
     }
 
     @Override
@@ -84,4 +85,18 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         @Override
         public void postSerialize(JsonElement result, EventData.LabeledEventData src, Gson gson) { }
     }
+
+    /**
+     * Processor for events that request a reviewer.
+     */
+    static class RequestedReviewEventProcessor implements PostProcessor<EventData.RequestedReviewEventData> {
+
+        @Override
+        public void postDeserialize(EventData.RequestedReviewEventData result, JsonElement src, Gson gson) {
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.RequestedReviewEventData src, Gson gson) { }
+    }
+
 }
