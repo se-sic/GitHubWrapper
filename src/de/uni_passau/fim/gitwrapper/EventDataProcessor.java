@@ -26,6 +26,7 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         map.put("merged", EventData.ReferencedEventData.class);
         map.put("closed", EventData.ReferencedEventData.class);
         map.put("review_requested", EventData.RequestedReviewEventData.class);
+        map.put("review_request_removed", EventData.RequestedReviewEventData.class);
     }
 
     @Override
