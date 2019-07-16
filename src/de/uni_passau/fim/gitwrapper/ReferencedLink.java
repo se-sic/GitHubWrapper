@@ -9,7 +9,7 @@ import java.time.OffsetDateTime;
  */
 public class ReferencedLink<T> {
 
-    transient T target;
+    T target;
     UserData user;
     @SerializedName(value = "referenced_at", alternate = {"created_at"})
     OffsetDateTime referenced_at;

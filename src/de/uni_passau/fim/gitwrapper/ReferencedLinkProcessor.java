@@ -74,19 +74,22 @@ public class ReferencedLinkProcessor implements JsonDeserializer<ReferencedLink>
             case "String":
                 result.getAsJsonObject().addProperty("type", "comment");
                 result.getAsJsonObject().addProperty("body", ((String) src.getTarget()));
+                result.getAsJsonObject().remove("target");
                 break;
             case "Integer":
             case "PullRequestData":
             case "IssueData":
                 result.getAsJsonObject().addProperty("type", "issue");
                 result.getAsJsonObject().addProperty("number", ((Integer) src.getTarget()));
+                result.getAsJsonObject().remove("target");
                 break;
             case "Commit":
             case "GitHubCommit":
                 if(src.getType() != "commitAddedToPullRequest") {
                     result.getAsJsonObject().addProperty("type", "commit");
                 }
-                result.getAsJsonObject().addProperty("commit_id", ((Commit) src.getTarget()).id);
+                result.getAsJsonObject().add("commit", result.getAsJsonObject().get("target"));
+                result.getAsJsonObject().remove("target");
                 break;
             default:
                 result.getAsJsonObject().addProperty("type", "unknown");
