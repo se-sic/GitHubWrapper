@@ -57,7 +57,7 @@ public class GitHubRepository extends Repository {
 
     private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
     private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(true);
-	private final AtomicBoolean offline = new AtomicBoolean(false);
+    private final AtomicBoolean offline = new AtomicBoolean(false);
 
     private final ForkJoinPool threadPool;
 
