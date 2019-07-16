@@ -253,10 +253,11 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
                 //noinspection unchecked
                 json.ifPresent(data -> commits.addAll(
                         ((List<GitHubCommit>) gson.fromJson(data, new TypeToken<ArrayList<GitHubCommit>>() {}.getType())).stream().map(c -> {
-                            // Try to get committer data (currently not supported) -> TODO
+                            // Try to get committer data
                             UserData user = new UserData();
                             user.email = c.getCommitterMail();
                             user.name = c.getCommitter();
+                            user.username = c.getCommitterUsername();
                             OffsetDateTime time = c.getCommitterTime();
                             // otherwise get author data, close enough
                             if (user.email == null && user.name == null && time == null) {
@@ -271,7 +272,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
                                 time = result.created_at;
                             }
 
-                            return new ReferencedLink<>(c, user, time);
+                            return new ReferencedLink<>(c, user, time, "commitAddedToPullRequest");
                         }).collect(Collectors.toList())));
             }
 

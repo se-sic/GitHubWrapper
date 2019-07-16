@@ -7,6 +7,7 @@ public class GitHubCommit extends Commit {
 
     private String authorUsername;
     private String committerUsername;
+    private boolean addedToPullRequest = false;
 
     /**
      * Constructs a new {@link GitHubCommit} with the given <code>id</code> made in the <code>repo</code>.
@@ -81,5 +82,23 @@ public class GitHubCommit extends Commit {
      */
     void setAuthorUsername(String username) {
         this.authorUsername = username;
+    }
+
+    /**
+     * Returns whether this commit was added to the pull request of interest.
+     *
+     * @return whether this commit was added to the pull request of interest
+     */
+    public boolean isAddedToPullRequest() {
+        return addedToPullRequest;
+    }
+
+    /**
+     * Sets whether this commit was added to the pull request of interest.
+     *
+     * @param whether this commit was added to the pull request of interest
+     */
+    void setAddedToPullRequest(boolean added) {
+        this.addedToPullRequest = added;
     }
 }
