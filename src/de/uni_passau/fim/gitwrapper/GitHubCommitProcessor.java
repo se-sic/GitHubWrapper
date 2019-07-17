@@ -69,21 +69,41 @@ public class GitHubCommitProcessor implements JsonSerializer<GitHubCommit>, Json
             CommitUserData author = context.deserialize(commitData.get("author"), new TypeToken<CommitUserData>() {}.getType());
             CommitUserData committer = context.deserialize(commitData.get("committer"), new TypeToken<CommitUserData>() {}.getType());
 
-            if(!json.getAsJsonObject().get("author").isJsonNull()) {
+            if (!json.getAsJsonObject().get("author").isJsonNull()) {
                 author.githubUsername = json.getAsJsonObject().get("author").getAsJsonObject().get("login").getAsString();
             }
-            if(!json.getAsJsonObject().get("committer").isJsonNull()) {
+            if (!json.getAsJsonObject().get("committer").isJsonNull()) {
                 committer.githubUsername = json.getAsJsonObject().get("committer").getAsJsonObject().get("login").getAsString();
             }
             return repo.getReferencedCommit(commit.getAsString(), commitData.get("message").getAsString(), author, committer);
 
         } else if ((commit = json.getAsJsonObject().get("hash")) != null) {
             // reading from dump
-            UserData user = context.deserialize(json.getAsJsonObject().get("author"), new TypeToken<UserData>() {}.getType());
-            CommitUserData commitUser = new CommitUserData(user.name, user.email,
+
+            /*UserData user = context.deserialize(json.getAsJsonObject().get("author"), new TypeToken<UserData>() {}.getType());
+            CommitUserData commitUser = new CommitUserData(user.name, user.email, user.username,
                     context.deserialize(json.getAsJsonObject().get("time"), new TypeToken<OffsetDateTime>() {}.getType()));
             return repo.getGHCommit(commit.getAsString()).orElse(repo.getReferencedCommit(commit.getAsString(),
-                    json.getAsJsonObject().get("message").getAsString(), commitUser));
+                    json.getAsJsonObject().get("message").getAsString(), commitUser));*/
+
+            GitHubCommit ghc = new GitHubCommit(this.repo, commit.getAsString());
+            ghc.setMessage(json.getAsJsonObject().get("message").getAsString());
+
+            OffsetDateTime time = context.deserialize(json.getAsJsonObject().get("time"), new TypeToken<OffsetDateTime>() {}.getType());
+            ghc.setAuthorTime(time);
+
+            ghc.setAuthor(json.getAsJsonObject().get("author").getAsJsonObject().get("name").getAsString());
+            ghc.setAuthorMail(json.getAsJsonObject().get("author").getAsJsonObject().get("email").getAsString());
+            ghc.setCommitter(json.getAsJsonObject().get("committer").getAsJsonObject().get("name").getAsString());
+            ghc.setCommitterMail(json.getAsJsonObject().get("committer").getAsJsonObject().get("email").getAsString());
+
+            if (!json.getAsJsonObject().get("author").getAsJsonObject().get("username").isJsonNull()) {
+                ghc.setAuthorUsername(json.getAsJsonObject().get("author").getAsJsonObject().get("username").getAsString());
+            }
+            if (!json.getAsJsonObject().get("committer").getAsJsonObject().get("username").isJsonNull()) {
+                ghc.setCommitterUsername(json.getAsJsonObject().get("committer").getAsJsonObject().get("username").getAsString());
+            }
+            return ghc;
 
         } else {
             LOG.severe("Could not find a commit hash.");

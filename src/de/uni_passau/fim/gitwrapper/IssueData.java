@@ -112,6 +112,10 @@ public class IssueData implements GitHubRepository.IssueDataCached {
             ).collect(Collectors.toList());
         }
 
+        if (reviewsList == null) {
+            reviewsList = new ArrayList<>();
+        }
+
         eventsList = Collections.unmodifiableList(eventsList.stream()
                 .filter(Objects::nonNull).sorted(Comparator.comparing(link -> link.created_at)).collect(Collectors.toList()));
         commentsList = Collections.unmodifiableList(commentsList.stream()
