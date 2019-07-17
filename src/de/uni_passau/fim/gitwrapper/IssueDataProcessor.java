@@ -40,22 +40,67 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
     }
 
     /**
-     * Parses Commits from issue body, comment bodies and referenced events.
+     * Parses Commits from issue body, comment bodies, reviews, reviews' comments, and referenced events.
      *
      * @param issue
      *         the IssueData
      * @return a List of all referenced Commits
      */
     private List<ReferencedLink<GitHubCommit>> parseCommits(IssueData issue) {
+
+        // Parse commits from comments
         Stream<ReferencedLink<List<String>>> commentCommits = issue.getCommentsList().stream().map(comment ->
                         new ReferencedLink<>(extractSHA1s(comment.target), comment.user, comment.referenced_at));
 
+        // Parse commits from referenced commits
         Stream<ReferencedLink<List<String>>> referencedCommits = issue.getEventsList().stream()
                 .filter(eventData -> eventData instanceof EventData.ReferencedEventData)
                 // filter out errors from referencing commits
                 .filter(eventData -> ((EventData.ReferencedEventData) eventData).commit != null)
                 .map(eventData -> new ReferencedLink<>(Collections.singletonList(((EventData.ReferencedEventData) eventData).commit.getId()), eventData.user, eventData.created_at));
 
+        // Parse commits from reviews and reviews' comments
+        if (issue.isPullRequest()) {
+            Stream<ReferencedLink<List<String>>> reviewsCommentCommits = null;
+
+            for (ReviewData review :issue.getReviewsList()) {
+                Stream<ReferencedLink<List<String>>> reviewCommentCommits = review.getReviewComments().stream().map(comment ->
+                                new ReferencedLink<>(extractSHA1s(comment.target), comment.user, comment.referenced_at));
+                if (reviewsCommentCommits != null) {
+                    reviewsCommentCommits = Stream.concat(reviewsCommentCommits, reviewCommentCommits);
+                } else {
+                    reviewsCommentCommits = reviewCommentCommits;
+                }
+
+            }
+
+            Stream<ReferencedLink<List<String>>> reviewInitialCommentCommits = issue.getReviewsList().stream().map(review -> {
+                            if (review.hasReviewInitialComment()) {
+                                return new ReferencedLink<>(extractSHA1s(((ReviewData.ReviewInitialCommentData) review).body), review.user, review.submitted_at);
+                            } else {
+                                return new ReferencedLink<>(new ArrayList<>(), review.user, review.submitted_at);
+                            }
+            });
+
+            if (reviewsCommentCommits == null) {
+               commentCommits = Stream.concat(commentCommits, reviewInitialCommentCommits);
+            } else {
+               commentCommits = Stream.concat(commentCommits, Stream.concat(reviewsCommentCommits, reviewInitialCommentCommits));
+           }
+        }
+
+        // Parse commits from dismissal messages of "review_dismissed" events
+        Stream<ReferencedLink<List<String>>> dismissalCommentCommits = issue.getEventsList().stream().map(event -> {
+                        if (event.getEvent() == "review_dismissed") {
+                            return new ReferencedLink<>(extractSHA1s(((EventData.DismissedReviewEventData) event).dismissalMessage), event.user, event.created_at);
+                        } else {
+                            return new ReferencedLink<>(new ArrayList<>(), event.user, event.created_at);
+                        }
+        });
+
+        commentCommits = Stream.concat(commentCommits, dismissalCommentCommits);
+
+        // Parse commits from issue body and concat it with all matches from above
         return Stream.concat(Stream.concat(commentCommits, referencedCommits), Stream.of(new ReferencedLink<>(extractSHA1s(issue.body), issue.user, issue.created_at)))
                 .flatMap(commentEntries -> commentEntries.target.stream()
                         .map(repo::getGithubCommit)
@@ -68,15 +113,18 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
     }
 
     /**
-     * Parses a list of all referenced Issues
+     * Parse issues from issue body, comment bodies, reviews, reviews' comments, and referenced events.
      *
      * @param issue
      *         the Issue to analyze
      * @param gson
      *         the Gson used to deserialize
-     * @return a list of all Issues that are referenced in the body and the comments
+     * @return a list of all Issues that are referenced in  issue body, comment bodies, reviews, reviews' comments,
+     *         and referenced events.
      */
     List<ReferencedLink<IssueData>> parseIssues(IssueData issue, Gson gson) {
+
+        // Parse issues from comments
         Stream<ReferencedLink<List<String>>> commentIssues = issue.getCommentsList().stream().map(comment ->
                 new ReferencedLink<>(extractHashtags(comment.getTarget()), comment.user, comment.referenced_at));
 
@@ -84,6 +132,47 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         // 2018-04, I have not implemented it.
         // For details and links: https://gist.github.com/dahlbyk/229f6ee762e2b0b45f3add7c2459e64a
 
+        // Parse issues from reviews and reviews' comments
+        if (issue.isPullRequest()) {
+            Stream<ReferencedLink<List<String>>> reviewsCommentsIssues = null;
+
+            for (ReviewData review :issue.getReviewsList()) {
+                Stream<ReferencedLink<List<String>>> reviewCommentsIssues = review.getReviewComments().stream().map(comment ->
+                        new ReferencedLink<>(extractHashtags(comment.target), comment.user, comment.referenced_at));
+                if (reviewsCommentsIssues != null) {
+                    reviewsCommentsIssues = Stream.concat(reviewsCommentsIssues, reviewCommentsIssues);
+                } else {
+                    reviewsCommentsIssues = reviewCommentsIssues;
+                }
+            }
+
+            Stream<ReferencedLink<List<String>>> reviewInitialCommentsIssues = issue.getReviewsList().stream().map(review -> {
+                    if (review.hasReviewInitialComment()) {
+                        return new ReferencedLink<>(extractHashtags(((ReviewData.ReviewInitialCommentData) review).body), review.user, review.submitted_at);
+                    } else {
+                        return new ReferencedLink<>(new ArrayList<>(), review.user, review.submitted_at);
+                    }
+            });
+
+            if (reviewsCommentsIssues == null) {
+               commentIssues = Stream.concat(commentIssues, reviewInitialCommentsIssues);
+            } else {
+               commentIssues = Stream.concat(commentIssues, Stream.concat(reviewsCommentsIssues, reviewInitialCommentsIssues));
+            }
+        }
+
+        // Parse issues from dismissal messages of "review_dismissed" events
+        Stream<ReferencedLink<List<String>>> dismissalCommentIssues = issue.getEventsList().stream().map(event -> {
+                if (event.getEvent() == "review_dismissed") {
+                    return new ReferencedLink<>(extractHashtags(((EventData.DismissedReviewEventData) event).dismissalMessage), event.user, event.created_at);
+                } else {
+                    return new ReferencedLink<>(new ArrayList<>(), event.user, event.created_at);
+                }
+        });
+
+        commentIssues = Stream.concat(commentIssues, dismissalCommentIssues);
+
+        // Parse issues from issue body and concat it with all matches from above
         return Stream.concat(commentIssues, Stream.of(new ReferencedLink<>(extractHashtags(issue.body), issue.user, issue.created_at)))
                 .flatMap(commentEntries -> commentEntries.target.stream()
                         .map(link -> {
