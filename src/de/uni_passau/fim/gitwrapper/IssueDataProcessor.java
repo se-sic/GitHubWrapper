@@ -50,14 +50,14 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
         // Parse commits from comments
         Stream<ReferencedLink<List<String>>> commentCommits = issue.getCommentsList().stream().map(comment ->
-                        new ReferencedLink<>(extractSHA1s(comment.target), comment.user, comment.referenced_at));
+                        new ReferencedLink<>(extractSHA1s(comment.target), comment.user, comment.referenced_at, "commitMentionedInIssue"));
 
         // Parse commits from referenced commits
         Stream<ReferencedLink<List<String>>> referencedCommits = issue.getEventsList().stream()
                 .filter(eventData -> eventData instanceof EventData.ReferencedEventData)
                 // filter out errors from referencing commits
                 .filter(eventData -> ((EventData.ReferencedEventData) eventData).commit != null)
-                .map(eventData -> new ReferencedLink<>(Collections.singletonList(((EventData.ReferencedEventData) eventData).commit.getId()), eventData.user, eventData.created_at));
+                .map(eventData -> new ReferencedLink<>(Collections.singletonList(((EventData.ReferencedEventData) eventData).commit.getId()), eventData.user, eventData.created_at, "commitReferencesIssue"));
 
         // Parse commits from reviews and reviews' comments
         if (issue.isPullRequest()) {
@@ -65,7 +65,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
             for (ReviewData review :issue.getReviewsList()) {
                 Stream<ReferencedLink<List<String>>> reviewCommentCommits = review.getReviewComments().stream().map(comment ->
-                                new ReferencedLink<>(extractSHA1s(comment.target), comment.user, comment.referenced_at));
+                                new ReferencedLink<>(extractSHA1s(comment.target), comment.user, comment.referenced_at, "commitMentionedInIssue"));
                 if (reviewsCommentCommits != null) {
                     reviewsCommentCommits = Stream.concat(reviewsCommentCommits, reviewCommentCommits);
                 } else {
@@ -76,7 +76,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
             Stream<ReferencedLink<List<String>>> reviewInitialCommentCommits = issue.getReviewsList().stream().map(review -> {
                             if (review.hasReviewInitialComment()) {
-                                return new ReferencedLink<>(extractSHA1s(((ReviewData.ReviewInitialCommentData) review).body), review.user, review.submitted_at);
+                                return new ReferencedLink<>(extractSHA1s(((ReviewData.ReviewInitialCommentData) review).body), review.user, review.submitted_at, "commitMentionedInIssue");
                             } else {
                                 return new ReferencedLink<>(new ArrayList<>(), review.user, review.submitted_at);
                             }
@@ -92,7 +92,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         // Parse commits from dismissal messages of "review_dismissed" events
         Stream<ReferencedLink<List<String>>> dismissalCommentCommits = issue.getEventsList().stream().map(event -> {
                         if (event.getEvent() == "review_dismissed") {
-                            return new ReferencedLink<>(extractSHA1s(((EventData.DismissedReviewEventData) event).dismissalMessage), event.user, event.created_at);
+                            return new ReferencedLink<>(extractSHA1s(((EventData.DismissedReviewEventData) event).dismissalMessage), event.user, event.created_at, "commitMentionedInIssue");
                         } else {
                             return new ReferencedLink<>(new ArrayList<>(), event.user, event.created_at);
                         }
@@ -101,14 +101,14 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         commentCommits = Stream.concat(commentCommits, dismissalCommentCommits);
 
         // Parse commits from issue body and concat it with all matches from above
-        return Stream.concat(Stream.concat(commentCommits, referencedCommits), Stream.of(new ReferencedLink<>(extractSHA1s(issue.body), issue.user, issue.created_at)))
+        return Stream.concat(Stream.concat(commentCommits, referencedCommits), Stream.of(new ReferencedLink<>(extractSHA1s(issue.body), issue.user, issue.created_at, "commitMentionedInIssue")))
                 .flatMap(commentEntries -> commentEntries.target.stream()
                         .map(repo::getGithubCommit)
                         // filter out false positive matches on normal words (and other errors)
                         .filter(Optional::isPresent)
                         .map(Optional::get)
                         .distinct()
-                        .map(target -> new ReferencedLink<>(target, commentEntries.user, commentEntries.referenced_at)))
+                        .map(target -> new ReferencedLink<>(target, commentEntries.user, commentEntries.referenced_at, commentEntries.type)))
                 .collect(Collectors.toList());
     }
 

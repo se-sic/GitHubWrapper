@@ -46,14 +46,14 @@ public class ReferencedLinkProcessor implements JsonDeserializer<ReferencedLink>
                 break;
             case "commit":
             case "commitAddedToPullRequest":
+            case "commitMentionedInIssue":
+            case "commitReferencesIssue":
                 result = new ReferencedLink<GitHubCommit>();
                 result.target = context.deserialize(json.getAsJsonObject().get("commit"), new TypeToken<GitHubCommit>() {}.getType());
 
                 boolean addedToPullRequest = json.getAsJsonObject().get("type").getAsString().equals("commitAddedToPullRequest");
                 ((GitHubCommit) result.target).setAddedToPullRequest(addedToPullRequest);
-                if (addedToPullRequest) {
-                    result.type = "commitAddedToPullRequest";
-                }
+                result.type = json.getAsJsonObject().get("type").getAsString();
                 break;
             default:
                 LOG.warning("Encountered unknown reference type!");
@@ -92,7 +92,7 @@ public class ReferencedLinkProcessor implements JsonDeserializer<ReferencedLink>
                 break;
             case "Commit":
             case "GitHubCommit":
-                if (src.getType() != null && !src.getType().equals("commitAddedToPullRequest")) {
+                if (src.getType() == null) {
                     result.getAsJsonObject().addProperty("type", "commit");
                 }
                 result.getAsJsonObject().add("commit", result.getAsJsonObject().get("target"));
