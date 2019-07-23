@@ -119,10 +119,10 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
      *         the Issue to analyze
      * @param gson
      *         the Gson used to deserialize
-     * @return a list of all Issues that are referenced in  issue body, comment bodies, reviews, reviews' comments,
+     * @return a list of all Issue numbers that are referenced in issue body, comment bodies, reviews, reviews' comments,
      *         and referenced events.
      */
-    List<ReferencedLink<IssueData>> parseIssues(IssueData issue, Gson gson) {
+    List<ReferencedLink<Integer>> parseIssues(IssueData issue, Gson gson) {
 
         // Parse issues from comments
         Stream<ReferencedLink<List<String>>> commentIssues = issue.getCommentsList().stream().map(comment ->
@@ -181,17 +181,17 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
                                 num = Integer.parseInt(link);
                             } catch (NumberFormatException e) {
                                 //noinspection ConstantConditions Reason: type inference
-                                return Optional.ofNullable((IssueData) null);
+                                return Optional.ofNullable((Integer) null);
                             }
 
-                            // again, short-circuit, if he have a cache hit
+                            // again, short-circuit, if we have a cache hit
                             IssueData cached = cache.get(num);
                             if (cached != null) {
-                                return Optional.of(cached);
+                                return Optional.of(cached.getNumber());
                             }
 
                             Optional<String> refIssue = repo.getJSONStringFromURL(issueBaseUrl + link);
-                            return refIssue.map(s -> (IssueData) gson.fromJson(s, new TypeToken<IssueDataCached>() {}.getType()));
+                            return refIssue.map(s -> (((IssueData) gson.fromJson(s, new TypeToken<IssueDataCached>() {}.getType())).getNumber()));
                         })
                         // filter out false positive matches on normal words (and other errors)
                         .filter(Optional::isPresent)

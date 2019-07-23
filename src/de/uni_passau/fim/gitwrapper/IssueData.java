@@ -33,9 +33,6 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     private List<ReferencedLink<GitHubCommit>> relatedCommits;
     List<ReferencedLink<Integer>> relatedIssues;
 
-    // we serialize this list manually, since it may contain circles and even if not adds a lot of repetitive data
-    private transient List<ReferencedLink<IssueData>> relatedIssuesList = new ArrayList<>();
-
     transient GitHubRepository repo;
     private transient boolean frozen;
 
@@ -85,17 +82,16 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     }
 
     /**
-     * Sets a related Issue to this Issue.
+     * Sets a related Issue (rather its number) to this Issue.
      *
      * @param issues
      *         the issue.
      * @see IssueDataProcessor#parseIssues(IssueData, Gson)
      */
-    void setRelatedIssues(List<ReferencedLink<IssueData>> issues) {
+    void setRelatedIssues(List<ReferencedLink<Integer>> issues) {
         relatedIssues = issues.stream().map(issue ->
-                new ReferencedLink<>(issue.target.number, issue.user, issue.referenced_at)
+                new ReferencedLink<>(issue.target, issue.user, issue.referenced_at)
         ).collect(Collectors.toList());
-        relatedIssuesList = issues;
     }
 
     /**
@@ -105,12 +101,6 @@ public class IssueData implements GitHubRepository.IssueDataCached {
         if (frozen) return;
 
         Comparator<ReferencedLink> compare = Comparator.comparing(ReferencedLink::getLinkTime);
-
-        if (relatedIssuesList == null) {
-            relatedIssuesList = relatedIssues.stream().map(id ->
-                    new ReferencedLink<>(repo.getIssueFromCache(id.target), id.user, id.referenced_at)
-            ).collect(Collectors.toList());
-        }
 
         if (reviewsList == null) {
             reviewsList = new ArrayList<>();
@@ -122,7 +112,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
                 .filter(Objects::nonNull).sorted(compare).collect(Collectors.toList()));
         reviewsList = Collections.unmodifiableList(reviewsList.stream()
                 .filter(Objects::nonNull).sorted(Comparator.comparing(link -> link.submitted_at)).collect(Collectors.toList()));
-        relatedIssuesList = Collections.unmodifiableList(relatedIssuesList.stream()
+        relatedIssues = Collections.unmodifiableList(relatedIssues.stream()
                 .filter(Objects::nonNull).distinct().sorted(compare).collect(Collectors.toList()));
         relatedCommits = Collections.unmodifiableList(relatedCommits.stream()
                 // Remove invalid commits before they cause problems
@@ -247,7 +237,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     /**
      * Gets a List of all Commits referenced in the Issue, its Comments and Events.
      *
-     * @return a List of Commits
+     * @return a List of Commits in form of ReferencedLink<GitHubCommit>
      */
     public List<ReferencedLink<GitHubCommit>> getRelatedCommits() {
         return relatedCommits;
@@ -256,10 +246,10 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     /**
      * Gets a List of all Issues referenced in the Issue and its Comments.
      *
-     * @return a List of IssueData
+     * @return a List of Issues in form of ReferencedLink<Integer>
      */
-    public List<ReferencedLink<IssueData>> getRelatedIssues() {
-        return relatedIssuesList;
+    public List<ReferencedLink<Integer>> getRelatedIssues() {
+        return relatedIssues;
     }
 
     @Override
