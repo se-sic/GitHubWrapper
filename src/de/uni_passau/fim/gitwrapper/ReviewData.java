@@ -16,7 +16,7 @@ public class ReviewData {
     String state;
     boolean hasReviewInitialComment;
 
-    private List<ReferencedLink<String>> reviewComments;
+    private List<ReferencedLink<ReviewCommentData>> reviewComments;
 
     @SerializedName(value = "reviewId", alternate = {"id"})
     int reviewId; // necessary for joining reviews and their commits, will be removed by the corresponding processor
@@ -56,7 +56,7 @@ public class ReviewData {
     /**
      * This list of comments belonging to a review.
      */
-    public List<ReferencedLink<String>> getReviewComments() {
+    public List<ReferencedLink<ReviewCommentData>> getReviewComments() {
         return reviewComments;
     }
 
@@ -66,7 +66,7 @@ public class ReviewData {
      * @param reviewComments
      *         the list of related review comments
      */
-    void setReviewComments(List<ReferencedLink<String>> reviewComments) {
+    void setReviewComments(List<ReferencedLink<ReviewCommentData>> reviewComments) {
         this.reviewComments = reviewComments;
     }
 

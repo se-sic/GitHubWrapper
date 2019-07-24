@@ -65,13 +65,12 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
             for (ReviewData review :issue.getReviewsList()) {
                 Stream<ReferencedLink<List<String>>> reviewCommentCommits = review.getReviewComments().stream().map(comment ->
-                                new ReferencedLink<>(extractSHA1s(comment.target), comment.user, comment.referenced_at, "commitMentionedInIssue"));
+                                new ReferencedLink<>(extractSHA1s(comment.target.getBody()), comment.user, comment.referenced_at, "commitMentionedInIssue"));
                 if (reviewsCommentCommits != null) {
                     reviewsCommentCommits = Stream.concat(reviewsCommentCommits, reviewCommentCommits);
                 } else {
                     reviewsCommentCommits = reviewCommentCommits;
                 }
-
             }
 
             Stream<ReferencedLink<List<String>>> reviewInitialCommentCommits = issue.getReviewsList().stream().map(review -> {
@@ -138,7 +137,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
             for (ReviewData review :issue.getReviewsList()) {
                 Stream<ReferencedLink<List<String>>> reviewCommentsIssues = review.getReviewComments().stream().map(comment ->
-                        new ReferencedLink<>(extractHashtags(comment.target), comment.user, comment.referenced_at));
+                        new ReferencedLink<>(extractHashtags(comment.target.getBody()), comment.user, comment.referenced_at));
                 if (reviewsCommentsIssues != null) {
                     reviewsCommentsIssues = Stream.concat(reviewsCommentsIssues, reviewCommentsIssues);
                 } else {

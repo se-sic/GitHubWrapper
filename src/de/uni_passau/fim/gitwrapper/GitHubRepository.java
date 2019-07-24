@@ -425,9 +425,9 @@ public class GitHubRepository extends Repository {
                         }
                     }).collect(Collectors.toList());
 
-                    List<ReferencedLink<String>> relatedReviewComments = relatedComments.stream().map(comment -> {
+                    List<ReferencedLink<ReviewCommentData>> relatedReviewComments = relatedComments.stream().map(comment -> {
                         String c = gson.toJson(comment);
-                        ReferencedLink<String> r = gson.fromJson(c, new TypeToken<ReferencedLink<String>>() {}.getType());
+                        ReferencedLink<ReviewCommentData> r = gson.fromJson(c, new TypeToken<ReferencedLink<ReviewCommentData>>() {}.getType());
                         return r;
                     }).collect(Collectors.toList());
 

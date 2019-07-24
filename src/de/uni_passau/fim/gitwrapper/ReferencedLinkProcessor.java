@@ -28,16 +28,64 @@ public class ReferencedLinkProcessor implements JsonDeserializer<ReferencedLink>
         ReferencedLink result = new ReferencedLink<>();
         if (json.getAsJsonObject().get("type") == null) {
             // comment from github
-            result = new ReferencedLink<String>();
-            if (!json.getAsJsonObject().get("body").isJsonNull()) {
-                result.target = json.getAsJsonObject().get("body").getAsString();
+            if(json.getAsJsonObject().get("path") != null) {
+                // review comment
+                result = new ReferencedLink<ReviewCommentData>();
+                ReviewCommentData commentData = new ReviewCommentData();
+                commentData.file =  json.getAsJsonObject().get("path").getAsString();
+                if (!json.getAsJsonObject().get("position").isJsonNull()) {
+                    commentData.position = json.getAsJsonObject().get("position").getAsInt();
+                } else {
+                    commentData.position = null;
+                }
+                if (!json.getAsJsonObject().get("original_position").isJsonNull()) {
+                    commentData.original_position = json.getAsJsonObject().get("original_position").getAsInt();
+                } else {
+                    commentData.original_position = null;
+                }
+                if (!json.getAsJsonObject().get("body").isJsonNull()) {
+                    commentData.body = json.getAsJsonObject().get("body").getAsString();
+                } else {
+                    commentData.body = "";
+                }
+                commentData.commit_id = json.getAsJsonObject().get("commit_id").getAsString();
+                commentData.original_commit_id = json.getAsJsonObject().get("original_commit_id").getAsString();
+                result.target = commentData;
             } else {
-                result.target = "";
+                // normal comment
+                result = new ReferencedLink<String>();
+                if (!json.getAsJsonObject().get("body").isJsonNull()) {
+                    result.target = json.getAsJsonObject().get("body").getAsString();
+                } else {
+                    result.target = "";
+                }
             }
         } else switch (json.getAsJsonObject().get("type").getAsString()) {
             case "comment":
-                result = new ReferencedLink<String>();
-                result.target = json.getAsJsonObject().get("body").getAsString();
+                if(json.getAsJsonObject().get("file") != null) {
+                    // review comment
+                    result = new ReferencedLink<ReviewCommentData>();
+                    ReviewCommentData commentData = new ReviewCommentData();
+                    commentData.file =  json.getAsJsonObject().get("file").getAsString();
+                    if (!json.getAsJsonObject().get("position").isJsonNull()) {
+                        commentData.position = json.getAsJsonObject().get("position").getAsInt();
+                    } else {
+                        commentData.position = null;
+                    }
+                    if (!json.getAsJsonObject().get("original_position").isJsonNull()) {
+                       commentData.original_position = json.getAsJsonObject().get("original_position").getAsInt();
+                    } else {
+                       commentData.original_position = null;
+                    }
+                    commentData.commit_id = json.getAsJsonObject().get("commit_id").getAsString();
+                    commentData.original_commit_id = json.getAsJsonObject().get("original_commit_id").getAsString();
+                    commentData.body = json.getAsJsonObject().get("body").getAsString();
+                    result.target = commentData;
+                } else {
+                    // normal comment
+                    result = new ReferencedLink<String>();
+                    result.target = json.getAsJsonObject().get("body").getAsString();
+                }
                 break;
             case "issue":
             case "pullrequest":
@@ -81,6 +129,16 @@ public class ReferencedLinkProcessor implements JsonDeserializer<ReferencedLink>
             case "String":
                 result.getAsJsonObject().addProperty("type", "comment");
                 result.getAsJsonObject().addProperty("body", ((String) src.getTarget()));
+                result.getAsJsonObject().remove("target");
+                break;
+            case "ReviewCommentData":
+                result.getAsJsonObject().addProperty("type", "comment");
+                result.getAsJsonObject().addProperty("body", ((ReviewCommentData) src.getTarget()).getBody());
+                result.getAsJsonObject().addProperty("file", ((ReviewCommentData) src.getTarget()).getFile());
+                result.getAsJsonObject().addProperty("position", ((ReviewCommentData) src.getTarget()).getPosition());
+                result.getAsJsonObject().addProperty("original_position", ((ReviewCommentData) src.getTarget()).getOriginalPosition());
+                result.getAsJsonObject().addProperty("commit_id", ((ReviewCommentData) src.getTarget()).getCommitId());
+                result.getAsJsonObject().addProperty("original_commit_id", ((ReviewCommentData) src.getTarget()).getOriginalCommitId());
                 result.getAsJsonObject().remove("target");
                 break;
             case "Integer":
