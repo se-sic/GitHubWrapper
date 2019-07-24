@@ -50,6 +50,8 @@ public class GitHubRepository extends Repository {
 
     private final Pattern commitPattern = Pattern.compile("([0-9a-f]{40})\n(.*?)\nhash=", Pattern.DOTALL);
     private final String apiBaseURL;
+    private final String repoName;
+    private final String repoUser;
     private List<PullRequest> pullRequests;
     private List<IssueData> issues;
     private Map<String, GitHubCommit> unknownCommits = new ConcurrentHashMap<>();
@@ -198,6 +200,9 @@ public class GitHubRepository extends Repository {
         apiBaseURL = url.replace(".git", "").replace("//github.com/", "//api.github.com/repos/");
         LOG.fine(String.format("Creating repo for %s", apiBaseURL));
 
+        this.repoName = getRepoNameFromUrl(this.getUrl());
+        this.repoUser = getRepoUserFromUrl(this.getUrl());
+
         synchronized (tokens) {
             oauthToken.stream().map(Token::new).forEach(tokens::add);
         }
@@ -231,6 +236,48 @@ public class GitHubRepository extends Repository {
         hc = HttpClients.createDefault();
 
         threadPool = new ForkJoinPool(oauthToken.size());
+    }
+
+    /**
+     * Determines the name of the repository from a given URL.
+     *
+     * @return the name of the repository
+     */
+    private static String getRepoNameFromUrl(String url) {
+         String[] parts = url.split("/");
+         String repoName = parts[parts.length - 1];
+         // remove the ".git" suffix
+         repoName = repoName.substring(0, repoName.length() - 4);
+     return repoName;
+    }
+
+    /**
+     * Determines the user or organization a repository belongs to from a given URL.
+     *
+     * @return the name of the user or organization
+     */
+    private static String getRepoUserFromUrl(String url) {
+         String[] parts = url.split("/");
+         String user = parts[parts.length - 2];
+         return user;
+    }
+
+    /**
+     * Gets the name of the repository.
+     *
+     * @return the name of the repository
+     */
+    public String getRepoName() {
+        return this.repoName;
+    }
+
+    /**
+     * Gets the name of user or organization the repository belongs to.
+     *
+     * @return the name of the user or organization
+     */
+    public String getRepoUser() {
+        return this.repoUser;
     }
 
     /**

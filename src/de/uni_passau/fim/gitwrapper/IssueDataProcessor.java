@@ -125,7 +125,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
         // Parse issues from comments
         Stream<ReferencedLink<List<String>>> commentIssues = issue.getCommentsList().stream().map(comment ->
-                new ReferencedLink<>(extractHashtags(comment.getTarget()), comment.user, comment.referenced_at));
+                new ReferencedLink<>(extractHashtags(comment.getTarget(), true), comment.user, comment.referenced_at));
 
         // to get real reference events, the timeline api needs to be incorporated. Since it is still in preview as of
         // 2018-04, I have not implemented it.
@@ -137,7 +137,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
             for (ReviewData review :issue.getReviewsList()) {
                 Stream<ReferencedLink<List<String>>> reviewCommentsIssues = review.getReviewComments().stream().map(comment ->
-                        new ReferencedLink<>(extractHashtags(comment.target.getBody()), comment.user, comment.referenced_at));
+                        new ReferencedLink<>(extractHashtags(comment.target.getBody(), true), comment.user, comment.referenced_at));
                 if (reviewsCommentsIssues != null) {
                     reviewsCommentsIssues = Stream.concat(reviewsCommentsIssues, reviewCommentsIssues);
                 } else {
@@ -147,7 +147,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
             Stream<ReferencedLink<List<String>>> reviewInitialCommentsIssues = issue.getReviewsList().stream().map(review -> {
                     if (review.hasReviewInitialComment()) {
-                        return new ReferencedLink<>(extractHashtags(((ReviewData.ReviewInitialCommentData) review).body), review.user, review.submitted_at);
+                        return new ReferencedLink<>(extractHashtags(((ReviewData.ReviewInitialCommentData) review).body, true), review.user, review.submitted_at);
                     } else {
                         return new ReferencedLink<>(new ArrayList<>(), review.user, review.submitted_at);
                     }
@@ -163,7 +163,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         // Parse issues from dismissal messages of "review_dismissed" events
         Stream<ReferencedLink<List<String>>> dismissalCommentIssues = issue.getEventsList().stream().map(event -> {
                 if (event.getEvent() == "review_dismissed") {
-                    return new ReferencedLink<>(extractHashtags(((EventData.DismissedReviewEventData) event).dismissalMessage), event.user, event.created_at);
+                    return new ReferencedLink<>(extractHashtags(((EventData.DismissedReviewEventData) event).dismissalMessage, true), event.user, event.created_at);
                 } else {
                     return new ReferencedLink<>(new ArrayList<>(), event.user, event.created_at);
                 }
@@ -172,7 +172,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         commentIssues = Stream.concat(commentIssues, dismissalCommentIssues);
 
         // Parse issues from issue body and concat it with all matches from above
-        return Stream.concat(commentIssues, Stream.of(new ReferencedLink<>(extractHashtags(issue.body), issue.user, issue.created_at)))
+        return Stream.concat(commentIssues, Stream.of(new ReferencedLink<>(extractHashtags(issue.body, true), issue.user, issue.created_at)))
                 .flatMap(commentEntries -> commentEntries.target.stream()
                         .map(link -> {
                             int num;
@@ -228,19 +228,43 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
      *
      * @param text
      *         the text to analyze
+     * @param onlyInSameRepo
+     *         whether to only check for hashtags pointing to the same repository
      * @return a List of all valid hashtags
      */
-    private List<String> extractHashtags(String text) {
+    private List<String> extractHashtags(String text, boolean onlyInSameRepo) {
         if (text == null) {
             return Collections.emptyList();
         }
-        Pattern sha1Pattern = Pattern.compile("#([0-9]{1,11})");
-        Matcher matcher = sha1Pattern.matcher(text);
+        Pattern hashtagPattern;
 
+        if (onlyInSameRepo) {
+            String repoName = repo.getRepoName();
+            String repoUser = repo.getRepoUser();
+
+            /* There are three possible patterns:
+             * (1) #number
+             * (2) repoUser#number
+             * (3) repoUser/repoName#number
+             */
+            hashtagPattern = Pattern.compile(String.format("(%s/%s|%s|^|\\s+)#([0-9]{1,11})", repoUser, repoName, repoUser));
+        } else {
+            hashtagPattern = Pattern.compile("#([0-9]{1,11})");
+        }
+
+        Matcher matcher = hashtagPattern.matcher(text);
         List<String> hashtags = new ArrayList<>();
 
         while (matcher.find()) {
-            hashtags.add(matcher.group(1));
+        String match;
+
+            if (onlyInSameRepo) {
+                // Just keep group 2, that is, kepp everything after the #
+                match = matcher.group(2);
+            } else {
+                match = matcher.group(1);
+            }
+            hashtags.add(match);
         }
 
         return hashtags;
