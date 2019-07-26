@@ -70,10 +70,18 @@ public class GitHubCommitProcessor implements JsonSerializer<GitHubCommit>, Json
             CommitUserData committer = context.deserialize(commitData.get("committer"), new TypeToken<CommitUserData>() {}.getType());
 
             if (!json.getAsJsonObject().get("author").isJsonNull()) {
-                author.githubUsername = json.getAsJsonObject().get("author").getAsJsonObject().get("login").getAsString();
+                try {
+                    author.githubUsername = json.getAsJsonObject().get("author").getAsJsonObject().get("login").getAsString();
+                } catch (NullPointerException e) {
+                    LOG.info("Author username not available for commit " + commit.getAsString());
+                }
             }
             if (!json.getAsJsonObject().get("committer").isJsonNull()) {
-                committer.githubUsername = json.getAsJsonObject().get("committer").getAsJsonObject().get("login").getAsString();
+                try {
+                    committer.githubUsername = json.getAsJsonObject().get("committer").getAsJsonObject().get("login").getAsString();
+                } catch (NullPointerException e) {
+                    LOG.info("Committer username not available for commit " + commit.getAsString());
+                }
             }
             return repo.getReferencedCommit(commit.getAsString(), commitData.get("message").getAsString(), author, committer);
 
