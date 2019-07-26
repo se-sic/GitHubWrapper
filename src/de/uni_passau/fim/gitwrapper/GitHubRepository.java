@@ -418,8 +418,14 @@ public class GitHubRepository extends Repository {
 
                     // Get related comments, that is, comments that belong to the review of interest
                     List<JsonElement> relatedComments = reviewComments.get().stream().filter(reviewComment -> {
-                        int refReviewId = gson.fromJson(reviewComment, JsonElement.class).getAsJsonObject().get("pull_request_review_id").getAsInt();
-                        return reviewId == refReviewId;
+                        JsonObject object = gson.fromJson(reviewComment, JsonElement.class).getAsJsonObject();
+                        if (!object.get("pull_request_review_id").isJsonNull()) {
+                            int refReviewId = object.get("pull_request_review_id").getAsInt();
+                            return reviewId == refReviewId;
+                        } else {
+                            LOG.info("Review comments API for pull request " + issue.number + " not accessible.");
+                            return false;
+                        }
                     }).collect(Collectors.toList());
 
                     if (relatedComments.size() < 1) {
@@ -446,9 +452,14 @@ public class GitHubRepository extends Repository {
                     // Get related comments, that is, comments that belong to the review of interest
                     List<JsonElement> relatedComments = reviewComments.get().stream().filter(reviewComment -> {
                         JsonObject reviewCommentObject = gson.fromJson(reviewComment, JsonElement.class).getAsJsonObject();
-                        Integer refReviewId = reviewCommentObject.get("pull_request_review_id").getAsInt();
+                        Integer refReviewId;
+                        if (!reviewCommentObject.get("pull_request_review_id").isJsonNull()) {
+                            refReviewId = reviewCommentObject.get("pull_request_review_id").getAsInt();
+                        } else {
+                            return false;
+                        }
 
-                        if(reviewId == refReviewId) {
+                        if (reviewId == refReviewId) {
                             commentReviewMap.put(reviewCommentObject.get("id").getAsInt(), reviewCommentObject.get("pull_request_review_id").getAsInt());
                             return true;
                         } else {
