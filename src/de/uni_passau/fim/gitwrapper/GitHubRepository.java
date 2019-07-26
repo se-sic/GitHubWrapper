@@ -244,11 +244,14 @@ public class GitHubRepository extends Repository {
      * @return the name of the repository
      */
     private static String getRepoNameFromUrl(String url) {
-         String[] parts = url.split("/");
-         String repoName = parts[parts.length - 1];
-         // remove the ".git" suffix
-         repoName = repoName.substring(0, repoName.length() - 4);
-     return repoName;
+        String[] parts = url.split("/");
+        String repoName = parts[parts.length - 1];
+
+        // remove the ".git" suffix
+        if (repoName.endsWith(".git")) {
+            repoName = repoName.substring(0, repoName.length() - 4);
+        }
+        return repoName;
     }
 
     /**
@@ -257,9 +260,9 @@ public class GitHubRepository extends Repository {
      * @return the name of the user or organization
      */
     private static String getRepoUserFromUrl(String url) {
-         String[] parts = url.split("/");
-         String user = parts[parts.length - 2];
-         return user;
+        String[] parts = url.split("/");
+        String user = parts[parts.length - 2];
+        return user;
     }
 
     /**
