@@ -72,7 +72,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     }
 
     /**
-     * Sets a related Commit to this Issue.
+     * Sets a list of related Commits to this Issue.
      *
      * @param commits
      *         the Commit list
@@ -82,15 +82,29 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     }
 
     /**
-     * Sets a related Issue (rather its number) to this Issue.
+     * Sets a list of related Issues (rather their numbers) to this Issue
+     * from links containing just issues numbers.
      *
      * @param issues
-     *         the issue.
+     *         the issue list (composed of Integers)
      * @see IssueDataProcessor#parseIssues(IssueData, Gson)
      */
     void setRelatedIssues(List<ReferencedLink<Integer>> issues) {
         relatedIssues = issues.stream().map(issue ->
                 new ReferencedLink<>(issue.target, issue.user, issue.referenced_at)
+        ).collect(Collectors.toList());
+    }
+
+    /**
+     * Sets a list of related Issues (rather their numbers) to this Issue
+     * from links containing IssueData objects.
+     *
+     * @param issues
+     *         the issue list (composed of IssueData objects)
+     */
+    void setRelatedIssuesFromIssueData(List<ReferencedLink<IssueData>> issues) {
+        relatedIssues = issues.stream().map(issue ->
+                new ReferencedLink<>(((IssueData) issue.target).number, issue.user, issue.referenced_at)
         ).collect(Collectors.toList());
     }
 
@@ -246,10 +260,17 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     /**
      * Gets a List of all Issues referenced in the Issue and its Comments.
      *
-     * @return a List of Issues in form of ReferencedLink<Integer>
+     * @return a List of Issues in form of ReferencedLink<IssueData>
      */
-    public List<ReferencedLink<Integer>> getRelatedIssues() {
-        return relatedIssues;
+    public List<ReferencedLink<IssueData>> getRelatedIssues() {
+        List<ReferencedLink<IssueData>> issues = new ArrayList<>();
+
+        for(ReferencedLink<Integer> relatedIssue : relatedIssues) {
+            IssueData cachedIssue = repo.getIssueFromCache((Integer) relatedIssue.target);
+            ReferencedLink<IssueData> issue = new ReferencedLink<>(cachedIssue, relatedIssue.user, relatedIssue.referenced_at);
+            issues.add(issue);
+        }
+        return issues;
     }
 
     @Override
