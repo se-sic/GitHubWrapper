@@ -242,12 +242,19 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
             String repoName = repo.getRepoName();
             String repoUser = repo.getRepoUser();
 
-            /* There are three possible patterns:
+            /* There are several possible patterns:
              * (1) #number
              * (2) repoUser#number
              * (3) repoUser/repoName#number
+	     * (4) /pull/number
+	     * (5) repoUser/pull/number
+	     * (6) repoUser/repoName/pull/number
+	     * (7) /issues/number
+	     * (9) repoUser/issues/number
+	     * (10) repoUser/repoName/issues/number
              */
-            hashtagPattern = Pattern.compile(String.format("(%s/%s|%s|^|\\s+)#([0-9]{1,11})", repoUser, repoName, repoUser));
+            hashtagPattern = Pattern.compile(String.format("(%s/%s|%s|^|\\s+)(#|/pull/|/issues/)([0-9]{1,11})",
+                                                           repoUser, repoName, repoUser));
         } else {
             hashtagPattern = Pattern.compile("#([0-9]{1,11})");
         }
@@ -259,8 +266,8 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         String match;
 
             if (onlyInSameRepo) {
-                // Just keep group 2, that is, kepp everything after the #
-                match = matcher.group(2);
+                // Just keep group 3, that is, keep everything after the #
+                match = matcher.group(3);
             } else {
                 match = matcher.group(1);
             }
