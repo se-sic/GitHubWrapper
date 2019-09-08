@@ -25,6 +25,11 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         map.put("referenced", EventData.ReferencedEventData.class);
         map.put("merged", EventData.ReferencedEventData.class);
         map.put("closed", EventData.ReferencedEventData.class);
+        map.put("review_requested", EventData.RequestedReviewEventData.class);
+        map.put("review_request_removed", EventData.RequestedReviewEventData.class);
+        map.put("review_dismissed", EventData.DismissedReviewEventData.class);
+        map.put("assigned", EventData.AssignedEventData.class);
+        map.put("unassigned", EventData.AssignedEventData.class);
     }
 
     @Override
@@ -83,5 +88,55 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
 
         @Override
         public void postSerialize(JsonElement result, EventData.LabeledEventData src, Gson gson) { }
+    }
+
+    /**
+     * Processor for events that request a reviewer.
+     */
+    static class RequestedReviewEventProcessor implements PostProcessor<EventData.RequestedReviewEventData> {
+
+        @Override
+        public void postDeserialize(EventData.RequestedReviewEventData result, JsonElement src, Gson gson) {
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.RequestedReviewEventData src, Gson gson) { }
+    }
+
+
+    /**
+     * Processor for events that dismiss a review.
+     */
+    static class DismissedReviewEventProcessor implements PostProcessor<EventData.DismissedReviewEventData> {
+
+        @Override
+        public void postDeserialize(EventData.DismissedReviewEventData result, JsonElement src, Gson gson) {
+            JsonObject dismissedReview = src.getAsJsonObject().get("dismissed_review").getAsJsonObject();
+            result.reviewId = dismissedReview.get("review_id").getAsInt();
+            result.state = dismissedReview.get("state").getAsString();
+            if (!dismissedReview.get("dismissal_message").isJsonNull()) {
+               result.dismissalMessage = dismissedReview.get("dismissal_message").getAsString();
+            }
+            if (dismissedReview.get("dismissal_commit_id") != null
+                && !dismissedReview.get("dismissal_commit_id").isJsonNull()) {
+               result.dismissalCommitId = dismissedReview.get("dismissal_commit_id").getAsString();
+           }
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.DismissedReviewEventData src, Gson gson) { }
+    }
+
+    /**
+     * Processor for assign events.
+     */
+    static class AssignedEventProcessor implements PostProcessor<EventData.AssignedEventData> {
+
+        @Override
+        public void postDeserialize(EventData.AssignedEventData result, JsonElement src, Gson gson) {
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.AssignedEventData src, Gson gson) { }
     }
 }

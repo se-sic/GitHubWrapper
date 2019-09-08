@@ -53,6 +53,7 @@ public class UserData {
     static class CommitUserData {
         String name;
         String email;
+        String githubUsername;
         OffsetDateTime date;
 
         /**
@@ -69,6 +70,13 @@ public class UserData {
             this.name = name;
             this.email = email;
             this.date = date;
+        }
+
+        CommitUserData(String name, String email, String username, OffsetDateTime date) {
+            this.name = name;
+            this.email = email;
+            this.date = date;
+            this.githubUsername = username;
         }
     }
 }

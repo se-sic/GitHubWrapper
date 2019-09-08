@@ -40,51 +40,139 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
     }
 
     /**
-     * Parses Commits from issue body, comment bodies and referenced events.
+     * Parses Commits from issue body, comment bodies, reviews, reviews' comments, and referenced events.
      *
      * @param issue
      *         the IssueData
      * @return a List of all referenced Commits
      */
-    private List<ReferencedLink<Commit>> parseCommits(IssueData issue) {
-        Stream<ReferencedLink<List<String>>> commentCommits = issue.getCommentsList().stream().map(comment ->
-                        new ReferencedLink<>(extractSHA1s(comment.target), comment.user, comment.referenced_at));
+    private List<ReferencedLink<GitHubCommit>> parseCommits(IssueData issue) {
 
+        // Parse commits from comments
+        Stream<ReferencedLink<List<String>>> commentCommits = issue.getCommentsList().stream().map(comment ->
+                        new ReferencedLink<>(extractSHA1s(comment.target), comment.user, comment.referenced_at, "commitMentionedInIssue"));
+
+        // Parse commits from referenced commits
         Stream<ReferencedLink<List<String>>> referencedCommits = issue.getEventsList().stream()
                 .filter(eventData -> eventData instanceof EventData.ReferencedEventData)
                 // filter out errors from referencing commits
                 .filter(eventData -> ((EventData.ReferencedEventData) eventData).commit != null)
-                .map(eventData -> new ReferencedLink<>(Collections.singletonList(((EventData.ReferencedEventData) eventData).commit.getId()), eventData.user, eventData.created_at));
+                .map(eventData -> new ReferencedLink<>(Collections.singletonList(((EventData.ReferencedEventData) eventData).commit.getId()), eventData.user, eventData.created_at, "commitReferencesIssue"));
 
-        return Stream.concat(Stream.concat(commentCommits, referencedCommits), Stream.of(new ReferencedLink<>(extractSHA1s(issue.body), issue.user, issue.created_at)))
+        // Parse commits from reviews and reviews' comments
+        if (issue.isPullRequest()) {
+            Stream<ReferencedLink<List<String>>> reviewsCommentCommits = null;
+
+            for (ReviewData review :issue.getReviewsList()) {
+                Stream<ReferencedLink<List<String>>> reviewCommentCommits = review.getReviewComments().stream().map(comment ->
+                                new ReferencedLink<>(extractSHA1s(comment.target.getBody()), comment.user, comment.referenced_at, "commitMentionedInIssue"));
+                if (reviewsCommentCommits != null) {
+                    reviewsCommentCommits = Stream.concat(reviewsCommentCommits, reviewCommentCommits);
+                } else {
+                    reviewsCommentCommits = reviewCommentCommits;
+                }
+            }
+
+            Stream<ReferencedLink<List<String>>> reviewInitialCommentCommits = issue.getReviewsList().stream().map(review -> {
+                            if (review.hasReviewInitialComment()) {
+                                return new ReferencedLink<>(extractSHA1s(((ReviewData.ReviewInitialCommentData) review).body), review.user, review.submitted_at, "commitMentionedInIssue");
+                            } else {
+                                return new ReferencedLink<>(new ArrayList<>(), review.user, review.submitted_at);
+                            }
+            });
+
+            if (reviewsCommentCommits == null) {
+               commentCommits = Stream.concat(commentCommits, reviewInitialCommentCommits);
+            } else {
+               commentCommits = Stream.concat(commentCommits, Stream.concat(reviewsCommentCommits, reviewInitialCommentCommits));
+           }
+        }
+
+        // Parse commits from dismissal messages of "review_dismissed" events
+        Stream<ReferencedLink<List<String>>> dismissalCommentCommits = issue.getEventsList().stream().map(event -> {
+                        if (event.getEvent() == "review_dismissed") {
+                            return new ReferencedLink<>(extractSHA1s(((EventData.DismissedReviewEventData) event).dismissalMessage), event.user, event.created_at, "commitMentionedInIssue");
+                        } else {
+                            return new ReferencedLink<>(new ArrayList<>(), event.user, event.created_at);
+                        }
+        });
+
+        commentCommits = Stream.concat(commentCommits, dismissalCommentCommits);
+
+        // Parse commits from issue body and concat it with all matches from above
+        return Stream.concat(Stream.concat(commentCommits, referencedCommits), Stream.of(new ReferencedLink<>(extractSHA1s(issue.body), issue.user, issue.created_at, "commitMentionedInIssue")))
                 .flatMap(commentEntries -> commentEntries.target.stream()
                         .map(repo::getGithubCommit)
                         // filter out false positive matches on normal words (and other errors)
                         .filter(Optional::isPresent)
                         .map(Optional::get)
                         .distinct()
-                        .map(target -> new ReferencedLink<>(target, commentEntries.user, commentEntries.referenced_at)))
+                        .map(target -> new ReferencedLink<>(target, commentEntries.user, commentEntries.referenced_at, commentEntries.type)))
                 .collect(Collectors.toList());
     }
 
     /**
-     * Parses a list of all referenced Issues
+     * Parse issues from issue body, comment bodies, reviews, reviews' comments, and referenced events.
      *
      * @param issue
      *         the Issue to analyze
      * @param gson
      *         the Gson used to deserialize
-     * @return a list of all Issues that are referenced in the body and the comments
+     * @return a list of all Issue numbers that are referenced in issue body, comment bodies, reviews, reviews' comments,
+     *         and referenced events.
      */
-    List<ReferencedLink<IssueData>> parseIssues(IssueData issue, Gson gson) {
+    List<ReferencedLink<Integer>> parseIssues(IssueData issue, Gson gson) {
+
+        // Parse issues from comments
         Stream<ReferencedLink<List<String>>> commentIssues = issue.getCommentsList().stream().map(comment ->
-                new ReferencedLink<>(extractHashtags(comment.getTarget()), comment.user, comment.referenced_at));
+                new ReferencedLink<>(extractHashtags(comment.getTarget(), true), comment.user, comment.referenced_at));
 
         // to get real reference events, the timeline api needs to be incorporated. Since it is still in preview as of
         // 2018-04, I have not implemented it.
         // For details and links: https://gist.github.com/dahlbyk/229f6ee762e2b0b45f3add7c2459e64a
 
-        return Stream.concat(commentIssues, Stream.of(new ReferencedLink<>(extractHashtags(issue.body), issue.user, issue.created_at)))
+        // Parse issues from reviews and reviews' comments
+        if (issue.isPullRequest()) {
+            Stream<ReferencedLink<List<String>>> reviewsCommentsIssues = null;
+
+            for (ReviewData review :issue.getReviewsList()) {
+                Stream<ReferencedLink<List<String>>> reviewCommentsIssues = review.getReviewComments().stream().map(comment ->
+                        new ReferencedLink<>(extractHashtags(comment.target.getBody(), true), comment.user, comment.referenced_at));
+                if (reviewsCommentsIssues != null) {
+                    reviewsCommentsIssues = Stream.concat(reviewsCommentsIssues, reviewCommentsIssues);
+                } else {
+                    reviewsCommentsIssues = reviewCommentsIssues;
+                }
+            }
+
+            Stream<ReferencedLink<List<String>>> reviewInitialCommentsIssues = issue.getReviewsList().stream().map(review -> {
+                    if (review.hasReviewInitialComment()) {
+                        return new ReferencedLink<>(extractHashtags(((ReviewData.ReviewInitialCommentData) review).body, true), review.user, review.submitted_at);
+                    } else {
+                        return new ReferencedLink<>(new ArrayList<>(), review.user, review.submitted_at);
+                    }
+            });
+
+            if (reviewsCommentsIssues == null) {
+               commentIssues = Stream.concat(commentIssues, reviewInitialCommentsIssues);
+            } else {
+               commentIssues = Stream.concat(commentIssues, Stream.concat(reviewsCommentsIssues, reviewInitialCommentsIssues));
+            }
+        }
+
+        // Parse issues from dismissal messages of "review_dismissed" events
+        Stream<ReferencedLink<List<String>>> dismissalCommentIssues = issue.getEventsList().stream().map(event -> {
+                if (event.getEvent() == "review_dismissed") {
+                    return new ReferencedLink<>(extractHashtags(((EventData.DismissedReviewEventData) event).dismissalMessage, true), event.user, event.created_at);
+                } else {
+                    return new ReferencedLink<>(new ArrayList<>(), event.user, event.created_at);
+                }
+        });
+
+        commentIssues = Stream.concat(commentIssues, dismissalCommentIssues);
+
+        // Parse issues from issue body and concat it with all matches from above
+        return Stream.concat(commentIssues, Stream.of(new ReferencedLink<>(extractHashtags(issue.body, true), issue.user, issue.created_at)))
                 .flatMap(commentEntries -> commentEntries.target.stream()
                         .map(link -> {
                             int num;
@@ -92,17 +180,17 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
                                 num = Integer.parseInt(link);
                             } catch (NumberFormatException e) {
                                 //noinspection ConstantConditions Reason: type inference
-                                return Optional.ofNullable((IssueData) null);
+                                return Optional.ofNullable((Integer) null);
                             }
 
-                            // again, short-circuit, if he have a cache hit
+                            // again, short-circuit, if we have a cache hit
                             IssueData cached = cache.get(num);
                             if (cached != null) {
-                                return Optional.of(cached);
+                                return Optional.of(cached.getNumber());
                             }
 
                             Optional<String> refIssue = repo.getJSONStringFromURL(issueBaseUrl + link);
-                            return refIssue.map(s -> (IssueData) gson.fromJson(s, new TypeToken<IssueDataCached>() {}.getType()));
+                            return refIssue.map(s -> (((IssueData) gson.fromJson(s, new TypeToken<IssueDataCached>() {}.getType())).getNumber()));
                         })
                         // filter out false positive matches on normal words (and other errors)
                         .filter(Optional::isPresent)
@@ -140,19 +228,50 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
      *
      * @param text
      *         the text to analyze
+     * @param onlyInSameRepo
+     *         whether to only check for hashtags pointing to the same repository
      * @return a List of all valid hashtags
      */
-    private List<String> extractHashtags(String text) {
+    private List<String> extractHashtags(String text, boolean onlyInSameRepo) {
         if (text == null) {
             return Collections.emptyList();
         }
-        Pattern sha1Pattern = Pattern.compile("#([0-9]{1,11})");
-        Matcher matcher = sha1Pattern.matcher(text);
+        Pattern hashtagPattern;
 
+        if (onlyInSameRepo) {
+            String repoName = repo.getRepoName();
+            String repoUser = repo.getRepoUser();
+
+            /* There are several possible patterns:
+             * (1) #number
+             * (2) repoUser#number
+             * (3) repoUser/repoName#number
+	     * (4) /pull/number
+	     * (5) repoUser/pull/number
+	     * (6) repoUser/repoName/pull/number
+	     * (7) /issues/number
+	     * (9) repoUser/issues/number
+	     * (10) repoUser/repoName/issues/number
+             */
+            hashtagPattern = Pattern.compile(String.format("(%s/%s|%s|^|\\s+)(#|/pull/|/issues/)([0-9]{1,11})",
+                                                           repoUser, repoName, repoUser));
+        } else {
+            hashtagPattern = Pattern.compile("#([0-9]{1,11})");
+        }
+
+        Matcher matcher = hashtagPattern.matcher(text);
         List<String> hashtags = new ArrayList<>();
 
         while (matcher.find()) {
-            hashtags.add(matcher.group(1));
+        String match;
+
+            if (onlyInSameRepo) {
+                // Just keep group 3, that is, keep everything after the #
+                match = matcher.group(3);
+            } else {
+                match = matcher.group(1);
+            }
+            hashtags.add(match);
         }
 
         return hashtags;
@@ -241,23 +360,30 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
             result.setEvents(events.orElse(Collections.emptyList()));
         }
 
+        if (result.getReviewsList() == null && result.isPullRequest) {
+            Optional<List<ReviewData>> reviews = repo.getReviews(lookup);
+            result.setReviews(reviews.orElse(Collections.emptyList()));
+        }
+
         if (result.getRelatedCommits() == null) {
-            List<ReferencedLink<Commit>> commits = parseCommits(result);
+            List<ReferencedLink<GitHubCommit>> commits = parseCommits(result);
             if (result.isPullRequest) {
                 Optional<String> json = repo.getJSONStringFromURL(src.getAsJsonObject().get("commits_url").getAsString());
                 //noinspection unchecked
                 json.ifPresent(data -> commits.addAll(
-                        ((List<Commit>) gson.fromJson(data, new TypeToken<ArrayList<Commit>>() {}.getType())).stream().map(c -> {
-                            // Try to get committer data (currently not supported) -> TODO
+                        ((List<GitHubCommit>) gson.fromJson(data, new TypeToken<ArrayList<GitHubCommit>>() {}.getType())).stream().map(c -> {
+                            // Try to get committer data
                             UserData user = new UserData();
                             user.email = c.getCommitterMail();
                             user.name = c.getCommitter();
+                            user.username = c.getCommitterUsername();
                             OffsetDateTime time = c.getCommitterTime();
                             // otherwise get author data, close enough
                             if (user.email == null && user.name == null && time == null) {
                                 user.email = c.getAuthorMail();
                                 user.name = c.getAuthor();
                                 time = c.getAuthorTime();
+                                user.username = c.getAuthorUsername();
                             }
                             // if it still fails, make sure that we have data, even if it's just fomr the issue
                             if (user.email == null && user.name == null && time == null) {
@@ -265,7 +391,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
                                 time = result.created_at;
                             }
 
-                            return new ReferencedLink<>(c, user, time);
+                            return new ReferencedLink<>(c, user, time, "commitAddedToPullRequest");
                         }).collect(Collectors.toList())));
             }
 

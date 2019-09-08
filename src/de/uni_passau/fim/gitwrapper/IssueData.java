@@ -29,11 +29,9 @@ public class IssueData implements GitHubRepository.IssueDataCached {
 
     private List<ReferencedLink<String>> commentsList;
     private List<EventData> eventsList;
-    private List<ReferencedLink<Commit>> relatedCommits;
+    private List<ReviewData> reviewsList;
+    private List<ReferencedLink<GitHubCommit>> relatedCommits;
     List<ReferencedLink<Integer>> relatedIssues;
-
-    // we serialize this list manually, since it may contain circles and even if not adds a lot of repetitive data
-    private transient List<ReferencedLink<IssueData>> relatedIssuesList = new ArrayList<>();
 
     transient GitHubRepository repo;
     private transient boolean frozen;
@@ -64,27 +62,50 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     }
 
     /**
-     * Sets a related Commit to this Issue.
+     * Sets a list of Reviews to this Issue.
+     *
+     * @param reviews
+     *         the Review list
+     */
+    void setReviews(List<ReviewData> reviews) {
+        reviewsList = reviews;
+    }
+
+    /**
+     * Sets a list of related Commits to this Issue.
      *
      * @param commits
      *         the Commit list
      */
-    void setRelatedCommits(List<ReferencedLink<Commit>> commits) {
+    void setRelatedCommits(List<ReferencedLink<GitHubCommit>> commits) {
         relatedCommits = commits;
     }
 
     /**
-     * Sets a related Issue to this Issue.
+     * Sets a list of related Issues (rather their numbers) to this Issue
+     * from links containing just issues numbers.
      *
      * @param issues
-     *         the issue.
+     *         the issue list (composed of Integers)
      * @see IssueDataProcessor#parseIssues(IssueData, Gson)
      */
-    void setRelatedIssues(List<ReferencedLink<IssueData>> issues) {
+    void setRelatedIssues(List<ReferencedLink<Integer>> issues) {
         relatedIssues = issues.stream().map(issue ->
-                new ReferencedLink<>(issue.target.number, issue.user, issue.referenced_at)
+                new ReferencedLink<>(issue.target, issue.user, issue.referenced_at)
         ).collect(Collectors.toList());
-        relatedIssuesList = issues;
+    }
+
+    /**
+     * Sets a list of related Issues (rather their numbers) to this Issue
+     * from links containing IssueData objects.
+     *
+     * @param issues
+     *         the issue list (composed of IssueData objects)
+     */
+    void setRelatedIssuesFromIssueData(List<ReferencedLink<IssueData>> issues) {
+        relatedIssues = issues.stream().map(issue ->
+                new ReferencedLink<>(((IssueData) issue.target).number, issue.user, issue.referenced_at)
+        ).collect(Collectors.toList());
     }
 
     /**
@@ -95,17 +116,17 @@ public class IssueData implements GitHubRepository.IssueDataCached {
 
         Comparator<ReferencedLink> compare = Comparator.comparing(ReferencedLink::getLinkTime);
 
-        if (relatedIssuesList == null) {
-            relatedIssuesList = relatedIssues.stream().map(id ->
-                    new ReferencedLink<>(repo.getIssueFromCache(id.target), id.user, id.referenced_at)
-            ).collect(Collectors.toList());
+        if (reviewsList == null) {
+            reviewsList = new ArrayList<>();
         }
 
         eventsList = Collections.unmodifiableList(eventsList.stream()
                 .filter(Objects::nonNull).sorted(Comparator.comparing(link -> link.created_at)).collect(Collectors.toList()));
         commentsList = Collections.unmodifiableList(commentsList.stream()
                 .filter(Objects::nonNull).sorted(compare).collect(Collectors.toList()));
-        relatedIssuesList = Collections.unmodifiableList(relatedIssuesList.stream()
+        reviewsList = Collections.unmodifiableList(reviewsList.stream()
+                .filter(Objects::nonNull).sorted(Comparator.comparing(link -> link.submitted_at)).collect(Collectors.toList()));
+        relatedIssues = Collections.unmodifiableList(relatedIssues.stream()
                 .filter(Objects::nonNull).distinct().sorted(compare).collect(Collectors.toList()));
         relatedCommits = Collections.unmodifiableList(relatedCommits.stream()
                 // Remove invalid commits before they cause problems
@@ -219,21 +240,37 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     }
 
     /**
+     * Gets a List all Reviews.
+     *
+     * @return a List of ReviewData
+     */
+    public List<ReviewData> getReviewsList() {
+        return reviewsList;
+    }
+
+    /**
      * Gets a List of all Commits referenced in the Issue, its Comments and Events.
      *
-     * @return a List of Commits
+     * @return a List of Commits in form of ReferencedLink<GitHubCommit>
      */
-    public List<ReferencedLink<Commit>> getRelatedCommits() {
+    public List<ReferencedLink<GitHubCommit>> getRelatedCommits() {
         return relatedCommits;
     }
 
     /**
      * Gets a List of all Issues referenced in the Issue and its Comments.
      *
-     * @return a List of IssueData
+     * @return a List of Issues in form of ReferencedLink<IssueData>
      */
     public List<ReferencedLink<IssueData>> getRelatedIssues() {
-        return relatedIssuesList;
+        List<ReferencedLink<IssueData>> issues = new ArrayList<>();
+
+        for(ReferencedLink<Integer> relatedIssue : relatedIssues) {
+            IssueData cachedIssue = repo.getIssueFromCache((Integer) relatedIssue.target);
+            ReferencedLink<IssueData> issue = new ReferencedLink<>(cachedIssue, relatedIssue.user, relatedIssue.referenced_at);
+            issues.add(issue);
+        }
+        return issues;
     }
 
     @Override

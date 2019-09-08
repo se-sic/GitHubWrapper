@@ -51,7 +51,7 @@ public class IssueRunner {
 
     @Option(name = "-tokens",
             metaVar = "tokens.txt",
-            forbids = {"-singleToken"},
+            forbids = {"-token"},
             usage = "List of GitHub API tokens, one per line, no trailing newline.")
     private String tokenList = null;
 

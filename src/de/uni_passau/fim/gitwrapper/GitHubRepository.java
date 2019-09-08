@@ -3,6 +3,7 @@ package de.uni_passau.fim.gitwrapper;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.processexecutor.ProcessExecutor;
@@ -49,14 +50,16 @@ public class GitHubRepository extends Repository {
 
     private final Pattern commitPattern = Pattern.compile("([0-9a-f]{40})\n(.*?)\nhash=", Pattern.DOTALL);
     private final String apiBaseURL;
+    private final String repoName;
+    private final String repoUser;
     private List<PullRequest> pullRequests;
     private List<IssueData> issues;
-    private Map<String, Commit> unknownCommits = new ConcurrentHashMap<>();
-    private Map<String, Optional<Commit>> checkedHashes = new ConcurrentHashMap<>();
+    private Map<String, GitHubCommit> unknownCommits = new ConcurrentHashMap<>();
+    private Map<String, Optional<GitHubCommit>> checkedHashes = new ConcurrentHashMap<>();
 
     private final AtomicBoolean allowGuessing = new AtomicBoolean(false);
     private final AtomicBoolean sleepOnApiLimit = new AtomicBoolean(true);
-	private final AtomicBoolean offline = new AtomicBoolean(false);
+    private final AtomicBoolean offline = new AtomicBoolean(false);
 
     private final ForkJoinPool threadPool;
 
@@ -154,18 +157,20 @@ public class GitHubRepository extends Repository {
         }
         GsonBuilder gb = new GsonFireBuilder().createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, new UserDataProcessor(this)));
+        gb.registerTypeAdapter(GitHubCommit.class, new GitHubCommitProcessor(this, new UserDataProcessor(this)));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
         gb.registerTypeAdapter(ReferencedLink.class, new ReferencedLinkProcessor(this));
         gb.registerTypeAdapter(EventData.class, new EventDataProcessor());
+        gb.registerTypeAdapter(ReviewData.class, new ReviewDataProcessor());
         gb.registerTypeAdapter(OffsetDateTime.class, new OffsetDateTimerProcessor());
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
         gb.serializeNulls();
         Gson tempGson = gb.create();
 
         // read cache and fill up missing issue data
-		offline.set(true);
+        offline.set(true);
         List<IssueData> issues = new ArrayList<>(tempGson.fromJson(new BufferedReader(new FileReader(issueCache)), new TypeToken<List<IssueDataCached>>() {}.getType()));
-		offline.set(false);
+        offline.set(false);
         issueProcessor.addCache(issues);
         issues.forEach(IssueData::freeze);
 
@@ -195,6 +200,9 @@ public class GitHubRepository extends Repository {
         apiBaseURL = url.replace(".git", "").replace("//github.com/", "//api.github.com/repos/");
         LOG.fine(String.format("Creating repo for %s", apiBaseURL));
 
+        this.repoName = getRepoNameFromUrl(this.getUrl());
+        this.repoUser = getRepoUserFromUrl(this.getUrl());
+
         synchronized (tokens) {
             oauthToken.stream().map(Token::new).forEach(tokens::add);
         }
@@ -209,12 +217,17 @@ public class GitHubRepository extends Repository {
         gfb.registerPostProcessor(ReferencedLink.class, referencedLinkProcessor);
         gfb.registerPostProcessor(EventData.ReferencedEventData.class, new EventDataProcessor.ReferencedEventProcessor(this));
         gfb.registerPostProcessor(EventData.LabeledEventData.class, new EventDataProcessor.LabeledEventProcessor());
+        gfb.registerPostProcessor(EventData.DismissedReviewEventData.class, new EventDataProcessor.DismissedReviewEventProcessor());
+        gfb.registerPostProcessor(EventData.AssignedEventData.class, new EventDataProcessor.AssignedEventProcessor());
+        gfb.registerPostProcessor(ReviewData.ReviewInitialCommentData.class, new ReviewDataProcessor.ReviewInitialCommentDataProcessor(this));
         GsonBuilder gb = gfb.createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, userProcessor));
+        gb.registerTypeAdapter(GitHubCommit.class, new GitHubCommitProcessor(this, userProcessor));
         gb.registerTypeAdapter(IssueDataCached.class, issueProcessor);
         gb.registerTypeAdapter(ReferencedLink.class, referencedLinkProcessor);
         gb.registerTypeAdapter(EventData.class, new EventDataProcessor());
         gb.registerTypeAdapter(UserData.class, userProcessor);
+        gb.registerTypeAdapter(ReviewData.class, new ReviewDataProcessor());
         gb.registerTypeAdapter(OffsetDateTime.class, new OffsetDateTimerProcessor());
         gb.setDateFormat("yyyy-MM-dd HH:mm:ss");
         gb.serializeNulls();
@@ -223,6 +236,51 @@ public class GitHubRepository extends Repository {
         hc = HttpClients.createDefault();
 
         threadPool = new ForkJoinPool(oauthToken.size());
+    }
+
+    /**
+     * Determines the name of the repository from a given URL.
+     *
+     * @return the name of the repository
+     */
+    private static String getRepoNameFromUrl(String url) {
+        String[] parts = url.split("/");
+        String repoName = parts[parts.length - 1];
+
+        // remove the ".git" suffix
+        if (repoName.endsWith(".git")) {
+            repoName = repoName.substring(0, repoName.length() - 4);
+        }
+        return repoName;
+    }
+
+    /**
+     * Determines the user or organization a repository belongs to from a given URL.
+     *
+     * @return the name of the user or organization
+     */
+    private static String getRepoUserFromUrl(String url) {
+        String[] parts = url.split("/");
+        String user = parts[parts.length - 2];
+        return user;
+    }
+
+    /**
+     * Gets the name of the repository.
+     *
+     * @return the name of the repository
+     */
+    public String getRepoName() {
+        return this.repoName;
+    }
+
+    /**
+     * Gets the name of user or organization the repository belongs to.
+     *
+     * @return the name of the user or organization
+     */
+    public String getRepoUser() {
+        return this.repoUser;
     }
 
     /**
@@ -335,6 +393,128 @@ public class GitHubRepository extends Repository {
         return getJSONStringFromPath("/issues/" + issue.number + "/comments?state=all").map(json -> {
             try {
                 return gson.fromJson(json, new TypeToken<ArrayList<ReferencedLink>>() {}.getType());
+            } catch (JsonSyntaxException e) {
+                LOG.warning("Encountered invalid JSON: " + json);
+                return null;
+            }
+        });
+    }
+
+    /**
+     * Returns a List of Reviews for a Pull Request.
+     *
+     * @param issue
+     *         the parent IssueData
+     * @return optionally a list of ReviewData or an empty Optional if an error occurred
+     */
+    Optional<List<ReviewData>> getReviews(IssueData issue) {
+        return getJSONStringFromPath("/pulls/" + issue.number + "/reviews?state=all").map(json -> {
+            try {
+                List<ReviewData> reviews = gson.fromJson(json, new TypeToken<ArrayList<ReviewData>>() {}.getType());
+
+                /* As the reviews extracted from the GitHub API not only contain reviews, but also treats answers
+                 * (that is, comments) to reviews as separate reviews, we need to remove those reviews which are just
+                 * replies to other reviews.*/
+                Optional<List<JsonElement>> reviewComments = getReviewComments(issue);
+                List<ReviewData> actualReviews = reviews.stream().filter(review -> {
+                    int reviewId = review.getReviewId();
+
+                    // Get related comments, that is, comments that belong to the review of interest
+                    List<JsonElement> relatedComments = reviewComments.get().stream().filter(reviewComment -> {
+                        JsonObject object = gson.fromJson(reviewComment, JsonElement.class).getAsJsonObject();
+                        if (!object.get("pull_request_review_id").isJsonNull()) {
+                            int refReviewId = object.get("pull_request_review_id").getAsInt();
+                            return reviewId == refReviewId;
+                        } else {
+                            LOG.info("Review comments API for pull request " + issue.number + " not accessible.");
+                            return false;
+                        }
+                    }).collect(Collectors.toList());
+
+                    if (relatedComments.size() < 1) {
+                        // If there are no related comments for the review of interest, it actually is a review and not a comment
+                        return true;
+                    } else {
+                        // As there are related comments, check if there are comments that are *not* a reply.
+                        List<JsonElement> nonReplyComments = relatedComments.stream().filter(relatedComment -> {
+                            JsonElement inReplyTo = relatedComment.getAsJsonObject().get("in_reply_to_id");
+                            return (inReplyTo == null); // return (isNoReply);
+                        }).collect(Collectors.toList());
+                        // Only if there is, at least, one comment that is not a reply, we actually have found a review
+                        return nonReplyComments.size() > 0;
+                    }
+                }).collect(Collectors.toList());
+
+                // Get the review comments for all actual reviews
+                actualReviews = actualReviews.stream().map(review -> {
+                    int reviewId = review.getReviewId();
+
+                    // Build a map of comment ids to review ids. This is necessary as the review id of the comment may point to an invalid review.
+                    ConcurrentHashMap<Integer,Integer> commentReviewMap = new ConcurrentHashMap<Integer,Integer>();
+
+                    // Get related comments, that is, comments that belong to the review of interest
+                    List<JsonElement> relatedComments = reviewComments.get().stream().filter(reviewComment -> {
+                        JsonObject reviewCommentObject = gson.fromJson(reviewComment, JsonElement.class).getAsJsonObject();
+                        Integer refReviewId;
+                        if (!reviewCommentObject.get("pull_request_review_id").isJsonNull()) {
+                            refReviewId = reviewCommentObject.get("pull_request_review_id").getAsInt();
+                        } else {
+                            return false;
+                        }
+
+                        if (reviewId == refReviewId) {
+                            commentReviewMap.put(reviewCommentObject.get("id").getAsInt(), reviewCommentObject.get("pull_request_review_id").getAsInt());
+                            return true;
+                        } else {
+                            JsonElement inReplyTo = reviewCommentObject.get("in_reply_to_id");
+
+                            // If this is not a reply, drop this comment, as the comment does not belong to the review of interest
+                            if(inReplyTo == null) {
+                                return false;
+                            } else {
+
+                                // Comment is a reply. Now we need to check whether to referenced comment belongs to the review of interest.
+                                refReviewId = commentReviewMap.get(inReplyTo.getAsInt());
+
+                                if (refReviewId != null && refReviewId == reviewId) {
+                                    commentReviewMap.put(reviewCommentObject.get("id").getAsInt(), refReviewId);
+                                    return true;
+                                } else {
+                                    return false;
+                                }
+                            }
+                        }
+                    }).collect(Collectors.toList());
+
+                    List<ReferencedLink<ReviewCommentData>> relatedReviewComments = relatedComments.stream().map(comment -> {
+                        String c = gson.toJson(comment);
+                        ReferencedLink<ReviewCommentData> r = gson.fromJson(c, new TypeToken<ReferencedLink<ReviewCommentData>>() {}.getType());
+                        return r;
+                    }).collect(Collectors.toList());
+
+                    review.setReviewComments(Optional.of(relatedReviewComments).orElse(Collections.emptyList()));
+                    return review;
+                }).collect(Collectors.toList());
+
+                return actualReviews;
+            } catch (JsonSyntaxException e) {
+                LOG.warning("Encountered invalid JSON: " + json);
+                return null;
+            }
+        });
+    }
+
+     /**
+     * Returns a List of Comments for all Reviews of a Pull Request.
+     *
+     * @param issue
+     *         the parent IssueData
+     * @return optionally a list of JsonElements or an empty Optional if an error occurred
+     */
+    Optional<List<JsonElement>> getReviewComments(IssueData issue) {
+        return getJSONStringFromPath("/pulls/" + issue.number + "/comments?state=all").map(json -> {
+            try {
+                return gson.fromJson(json, new TypeToken<ArrayList<JsonElement>>() {}.getType());
             } catch (JsonSyntaxException e) {
                 LOG.warning("Encountered invalid JSON: " + json);
                 return null;
@@ -749,15 +929,15 @@ public class GitHubRepository extends Repository {
      * @return optionally a Commit, or an empty Optional, if neither the local repository nor GitHub have a reference
      * to a Commit with the given hash
      */
-    Optional<Commit> getGithubCommit(String hash) {
+    Optional<GitHubCommit> getGithubCommit(String hash) {
         return checkedHashes.computeIfAbsent(hash, x -> {
-			if (offline.get()) {
-				return Optional.of(getCommitUnchecked(DummyCommit.DUMMY_COMMIT_ID));
-			} else {
-				return getJSONStringFromURL(apiBaseURL + "/commits/" + hash).map(commitInfo ->
-                        gson.fromJson(commitInfo, new TypeToken<Commit>() {}.getType()));
-			}
-		});
+            if (offline.get()) {
+                return Optional.of(getGHCommitUnchecked(DummyCommit.DUMMY_COMMIT_ID));
+            } else {
+                return getJSONStringFromURL(apiBaseURL + "/commits/" + hash).map(commitInfo ->
+                    gson.fromJson(commitInfo, new TypeToken<GitHubCommit>() {}.getType()));
+            }
+        });
     }
 
     /**
@@ -771,7 +951,24 @@ public class GitHubRepository extends Repository {
      *         Data about the Commit author
      * @return the new Commit
      */
-    Commit getReferencedCommit(String hash, String message, UserData.CommitUserData author) {
+    GitHubCommit getReferencedCommit(String hash, String message, UserData.CommitUserData author) {
+        return getReferencedCommit(hash, message, author, null);
+    }
+
+    /**
+     * Creates a new Commit with the given data, and tries to fill in the  missing data from the local Repository
+     *
+     * @param hash
+     *         the sha1 hash of the Commit
+     * @param message
+     *         the commit messages
+     * @param author
+     *         Data about the Commit author
+     * @param committer
+     *         Data about the Commit committer
+     * @return the new Commit
+     */
+    GitHubCommit getReferencedCommit(String hash, String message, UserData.CommitUserData author, UserData.CommitUserData committer) {
         // Disable logging for this method call, so false positives don't reported
         Logger repoLog = Logger.getLogger(Repository.class.getCanonicalName());
         Logger commitLog = Logger.getLogger(Commit.class.getCanonicalName());
@@ -780,14 +977,19 @@ public class GitHubRepository extends Repository {
         repoLog.setLevel(Level.OFF);
         commitLog.setLevel(Level.OFF);
 
-        Commit commit = getCommitUnchecked(hash);
+        GitHubCommit commit = getGHCommitUnchecked(hash);
 
-        // init and check if data present, otherwise init manually
-        if (commit.getAuthor() == null) {
-            commit.setAuthor(author.name);
-            commit.setAuthorMail(author.email);
-            commit.setAuthorTime(author.date);
-            commit.setMessage(message);
+        commit.setAuthor(author.name);
+        commit.setAuthorMail(author.email);
+        commit.setAuthorTime(author.date);
+        commit.setMessage(message);
+        commit.setAuthorUsername(author.githubUsername);
+
+        if(committer != null) {
+            commit.setCommitter(committer.name);
+            commit.setCommitterMail(committer.email);
+            commit.setCommitterTime(committer.date);
+            commit.setCommitterUsername(committer.githubUsername);
         }
 
         // Reset logging
@@ -797,9 +999,39 @@ public class GitHubRepository extends Repository {
         return commit;
     }
 
+    /**
+     * Returns a {@link GitHubCommit} for the given ID. The caller must ensure that the ID is a full SHA1 hash of a
+     * commit that exists in this repository.
+     *
+     * @param id
+     *         the ID for the {@link Commit}
+     * @return the {@link GitHubCommit}
+     * @see #getCommitUnchecked(String)
+     */
+    GitHubCommit getGHCommitUnchecked(String id) {
+        return getGHCommit(id).orElse(unknownCommits.computeIfAbsent(id, (key) -> new GitHubCommit(this, key)));
+    }
+
+     /**
+     * Optionally returns a {@link GitHubCommit} for the given ID. If the given ID does not designate a commit that exists
+     * in this {@link Repository}, an empty {@link Optional} will be returned. The ID will be resolved to a full SHA1 hash.
+     *
+     * @param id
+     *         the ID of the commit
+     * @return the {@link GitHubCommit} or an empty {@link Optional} if the ID is invalid or an exception occurs
+     */
+    public Optional<GitHubCommit> getGHCommit(String id) {
+        Optional<Commit> commit = Optional.ofNullable(super.getCommit(id).orElse(unknownCommits.get(id)));
+        Optional<GitHubCommit> ghCommit = Optional.empty();
+        if(commit.isPresent()) {
+            ghCommit = Optional.ofNullable(new GitHubCommit(commit.get(), this, commit.get().getId()));
+        }
+        return ghCommit;
+    }
+
     @Override
     Commit getCommitUnchecked(String id) {
-        return getCommit(id).orElse(unknownCommits.computeIfAbsent(id, (key) -> new Commit(this, key)));
+        return getCommit(id).orElse(unknownCommits.computeIfAbsent(id, (key) -> new GitHubCommit(this, key)));
     }
 
     @Override

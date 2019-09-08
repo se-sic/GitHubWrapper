@@ -9,10 +9,11 @@ import java.time.OffsetDateTime;
  */
 public class ReferencedLink<T> {
 
-    transient T target;
+    T target;
     UserData user;
     @SerializedName(value = "referenced_at", alternate = {"created_at"})
     OffsetDateTime referenced_at;
+    String type;
 
     /**
      * Creates an empty ReferenceLink.
@@ -33,6 +34,25 @@ public class ReferencedLink<T> {
         this.target = target;
         this.user = user;
         this.referenced_at = referencedTime;
+    }
+
+    /**
+     * Creates a new ReferencedIssueData wrapper for adding additional information to linked elements.
+     *
+     * @param target
+     *         the referenced element
+     * @param user
+     *         the referencing user
+     * @param referencedTime
+     *         the referencing time
+     * @param type
+     *         the type of the reference
+     */
+    ReferencedLink(T target, UserData user, OffsetDateTime referencedTime, String type) {
+        this.target = target;
+        this.user = user;
+        this.referenced_at = referencedTime;
+        this.type = type;
     }
 
     /**
@@ -60,6 +80,15 @@ public class ReferencedLink<T> {
      */
     public OffsetDateTime getLinkTime() {
         return referenced_at;
+    }
+
+    /**
+     * Gets the type of the reference
+     *
+     * @return the type of the reference
+     */
+    public String getType() {
+        return type;
     }
 
     @Override

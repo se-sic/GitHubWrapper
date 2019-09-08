@@ -30,6 +30,8 @@ public class CommitProcessor implements JsonSerializer<Commit>, JsonDeserializer
      *
      * @param repo
      *         the repo containing the Commits
+     * @param userStore
+     *         the corresponding user store
      */
     CommitProcessor(GitHubRepository repo, UserDataProcessor userStore) {
         this.repo = repo;
