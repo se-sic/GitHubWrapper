@@ -8,6 +8,7 @@ import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.processexecutor.ProcessExecutor;
 import io.gsonfire.GsonFireBuilder;
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.Header;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -945,7 +946,8 @@ public class GitHubRepository extends Repository {
                      */
                     LOG.info("Malformed JSON String when querying data for commit " + hash + ". Neglect files element.");
                     String jsonStringFromURL = getJSONStringFromURL(apiBaseURL + "/commits/" + hash).get();
-                    jsonStringFromURL = jsonStringFromURL.replaceAll("\"files\":\\[.*", "\"files\":\\[\\]}");
+                    jsonStringFromURL = StringUtils.substringBefore(jsonStringFromURL, "\"files\":[");
+                    jsonStringFromURL = jsonStringFromURL + "\"files\":[]}";
                     return Optional.of(gson.fromJson(jsonStringFromURL, new TypeToken<GitHubCommit>() {}.getType()));
                 }
             }

@@ -29,6 +29,8 @@ dependencies {
     compile 'org.apache.httpcomponents:httpclient:4.5.5'
     compile 'org.apache.httpcomponents:fluent-hc:4.5.5'
 
+    compile group: 'commons-lang', name: 'commons-lang', version: '2.6'
+
     //json
     compile 'com.google.code.gson:gson:2.7'
     compile 'io.gsonfire:gson-fire:1.8.0'
