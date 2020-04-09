@@ -7,7 +7,10 @@ plugins {
 
 version '1.0-SNAPSHOT'
 
-sourceCompatibility = 1.8
+compileJava {
+    sourceCompatibility = '1.8'
+    targetCompatibility = '1.8'
+}
 
 repositories {
     mavenCentral()
@@ -25,6 +28,8 @@ dependencies {
     // better http client
     compile 'org.apache.httpcomponents:httpclient:4.5.5'
     compile 'org.apache.httpcomponents:fluent-hc:4.5.5'
+
+    compile group: 'commons-lang', name: 'commons-lang', version: '2.6'
 
     //json
     compile 'com.google.code.gson:gson:2.7'

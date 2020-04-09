@@ -8,6 +8,7 @@ import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.processexecutor.ProcessExecutor;
 import io.gsonfire.GsonFireBuilder;
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.Header;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -934,8 +935,21 @@ public class GitHubRepository extends Repository {
             if (offline.get()) {
                 return Optional.of(getGHCommitUnchecked(DummyCommit.DUMMY_COMMIT_ID));
             } else {
-                return getJSONStringFromURL(apiBaseURL + "/commits/" + hash).map(commitInfo ->
-                    gson.fromJson(commitInfo, new TypeToken<GitHubCommit>() {}.getType()));
+                try {
+                    return getJSONStringFromURL(apiBaseURL + "/commits/" + hash).map(commitInfo ->
+                        gson.fromJson(commitInfo, new TypeToken<GitHubCommit>() {}.getType()));
+                } catch (JsonSyntaxException e)  {
+                    /* For whatever reason, the JSON String is malformed, perhaps due to ill-encoded characters
+                     * in patches within the files element of the JSON String.
+                     * Due to that, get the JSON String again and remove the content of the files element of the
+                     * JSON String, as it is not needed for further processing.
+                     */
+                    LOG.info("Malformed JSON String when querying data for commit " + hash + ". Neglect files element.");
+                    String jsonStringFromURL = getJSONStringFromURL(apiBaseURL + "/commits/" + hash).get();
+                    jsonStringFromURL = StringUtils.substringBefore(jsonStringFromURL, "\"files\":[");
+                    jsonStringFromURL = jsonStringFromURL + "\"files\":[]}";
+                    return Optional.of(gson.fromJson(jsonStringFromURL, new TypeToken<GitHubCommit>() {}.getType()));
+                }
             }
         });
     }
