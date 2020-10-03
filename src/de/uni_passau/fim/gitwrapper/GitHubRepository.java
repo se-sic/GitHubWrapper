@@ -790,8 +790,15 @@ public class GitHubRepository extends Repository {
             json = String.join("", data).replace("][", ",");
 
         } catch (IOException e) {
-            LOG.warning("Could not get data from GitHub.");
-            return Optional.empty();
+            LOG.warning(String.format("Could not get data from GitHub (%s), retry...", urlString));
+
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException ex) {
+            }
+            return this.getJSONStringFromURL(urlString);
+
+            //return Optional.empty();
         }
 
         return json.isEmpty() ? Optional.empty() : Optional.of(json);
