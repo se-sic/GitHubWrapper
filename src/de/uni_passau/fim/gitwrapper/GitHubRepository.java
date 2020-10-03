@@ -420,17 +420,21 @@ public class GitHubRepository extends Repository {
                 List<ReviewData> actualReviews = reviews.stream().filter(review -> {
                     int reviewId = review.getReviewId();
 
-                    // Get related comments, that is, comments that belong to the review of interest
-                    List<JsonElement> relatedComments = reviewComments.get().stream().filter(reviewComment -> {
-                        JsonObject object = gson.fromJson(reviewComment, JsonElement.class).getAsJsonObject();
-                        if (!object.get("pull_request_review_id").isJsonNull()) {
-                            int refReviewId = object.get("pull_request_review_id").getAsInt();
-                            return reviewId == refReviewId;
-                        } else {
-                            LOG.info("Review comments API for pull request " + issue.number + " not accessible.");
-                            return false;
-                        }
-                    }).collect(Collectors.toList());
+                    List<JsonElement> relatedComments = new ArrayList<JsonElement>();
+
+                    if (reviewComments.isPresent()) {
+                        // Get related comments, that is, comments that belong to the review of interest
+                        relatedComments = reviewComments.get().stream().filter(reviewComment -> {
+                            JsonObject object = gson.fromJson(reviewComment, JsonElement.class).getAsJsonObject();
+                            if (!object.get("pull_request_review_id").isJsonNull()) {
+                                int refReviewId = object.get("pull_request_review_id").getAsInt();
+                                return reviewId == refReviewId;
+                            } else {
+                                LOG.info("Review comments API for pull request " + issue.number + " not accessible.");
+                                return false;
+                            }
+                        }).collect(Collectors.toList());
+                    }
 
                     if (relatedComments.size() < 1) {
                         // If there are no related comments for the review of interest, it actually is a review and not a comment
@@ -454,38 +458,42 @@ public class GitHubRepository extends Repository {
                     ConcurrentHashMap<Integer,Integer> commentReviewMap = new ConcurrentHashMap<Integer,Integer>();
 
                     // Get related comments, that is, comments that belong to the review of interest
-                    List<JsonElement> relatedComments = reviewComments.get().stream().filter(reviewComment -> {
-                        JsonObject reviewCommentObject = gson.fromJson(reviewComment, JsonElement.class).getAsJsonObject();
-                        Integer refReviewId;
-                        if (!reviewCommentObject.get("pull_request_review_id").isJsonNull()) {
-                            refReviewId = reviewCommentObject.get("pull_request_review_id").getAsInt();
-                        } else {
-                            return false;
-                        }
+                    List<JsonElement> relatedComments = new ArrayList<JsonElement>();
 
-                        if (reviewId == refReviewId) {
-                            commentReviewMap.put(reviewCommentObject.get("id").getAsInt(), reviewCommentObject.get("pull_request_review_id").getAsInt());
-                            return true;
-                        } else {
-                            JsonElement inReplyTo = reviewCommentObject.get("in_reply_to_id");
-
-                            // If this is not a reply, drop this comment, as the comment does not belong to the review of interest
-                            if(inReplyTo == null) {
-                                return false;
+                    if (reviewComments.isPresent()) {
+                        relatedComments = reviewComments.get().stream().filter(reviewComment -> {
+                            JsonObject reviewCommentObject = gson.fromJson(reviewComment, JsonElement.class).getAsJsonObject();
+                            Integer refReviewId;
+                            if (!reviewCommentObject.get("pull_request_review_id").isJsonNull()) {
+                                refReviewId = reviewCommentObject.get("pull_request_review_id").getAsInt();
                             } else {
+                                return false;
+                            }
 
-                                // Comment is a reply. Now we need to check whether to referenced comment belongs to the review of interest.
-                                refReviewId = commentReviewMap.get(inReplyTo.getAsInt());
+                            if (reviewId == refReviewId) {
+                                commentReviewMap.put(reviewCommentObject.get("id").getAsInt(), reviewCommentObject.get("pull_request_review_id").getAsInt());
+                                return true;
+                            } else {
+                                JsonElement inReplyTo = reviewCommentObject.get("in_reply_to_id");
 
-                                if (refReviewId != null && refReviewId == reviewId) {
-                                    commentReviewMap.put(reviewCommentObject.get("id").getAsInt(), refReviewId);
-                                    return true;
-                                } else {
+                                // If this is not a reply, drop this comment, as the comment does not belong to the review of interest
+                                if(inReplyTo == null) {
                                     return false;
+                                } else {
+
+                                    // Comment is a reply. Now we need to check whether to referenced comment belongs to the review of interest.
+                                    refReviewId = commentReviewMap.get(inReplyTo.getAsInt());
+
+                                    if (refReviewId != null && refReviewId == reviewId) {
+                                        commentReviewMap.put(reviewCommentObject.get("id").getAsInt(), refReviewId);
+                                        return true;
+                                    } else {
+                                        return false;
+                                    }
                                 }
                             }
-                        }
-                    }).collect(Collectors.toList());
+                        }).collect(Collectors.toList());
+                    }
 
                     List<ReferencedLink<ReviewCommentData>> relatedReviewComments = relatedComments.stream().map(comment -> {
                         String c = gson.toJson(comment);
