@@ -481,7 +481,7 @@ public class GitHubRepository extends Repository {
                                     return false;
                                 } else {
 
-                                    // Comment is a reply. Now we need to check whether to referenced comment belongs to the review of interest.
+                                    // Comment is a reply. Now we need to check whether the referenced comment belongs to the review of interest.
                                     refReviewId = commentReviewMap.get(inReplyTo.getAsInt());
 
                                     if (refReviewId != null && refReviewId == reviewId) {
