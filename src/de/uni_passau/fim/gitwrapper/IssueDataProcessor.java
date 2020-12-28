@@ -190,7 +190,12 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
                             }
 
                             Optional<String> refIssue = repo.getJSONStringFromURL(issueBaseUrl + link);
-                            return refIssue.map(s -> (((IssueData) gson.fromJson(s, new TypeToken<IssueDataCached>() {}.getType())).getNumber()));
+                            try {
+                                return refIssue.map(s -> (((IssueData) gson.fromJson(s, new TypeToken<IssueDataCached>() {}.getType())).getNumber()));
+                            } catch (NullPointerException e) {
+                                // refIssue seems to be not existent, don't return an issue here
+                                return Optional.ofNullable((Integer) null);
+                            }
                         })
                         // filter out false positive matches on normal words (and other errors)
                         .filter(Optional::isPresent)
