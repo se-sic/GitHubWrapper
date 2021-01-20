@@ -2,6 +2,7 @@ package de.uni_passau.fim.issuerunner;
 
 import de.uni_passau.fim.gitwrapper.GitHubRepository;
 import de.uni_passau.fim.gitwrapper.GitWrapper;
+import de.uni_passau.fim.gitwrapper.IssueData;
 import de.uni_passau.fim.gitwrapper.Repository;
 import de.uni_passau.fim.processexecutor.ToolNotWorkingException;
 import org.kohsuke.args4j.CmdLineException;
@@ -183,13 +184,15 @@ public class IssueRunner {
                 repo = new GitHubRepository(clone.get(), finalTokens);
             }
 
-            Optional<String> json = repo.getIssues(true, since).map(repo::serialize);
-            if (!json.isPresent()) {
+            Optional<List<IssueData>> issueData = repo.getIssues(true, since);
+
+            if (!issueData.isPresent()) {
                 LOG.severe("Could not net issues. Skipping.");
                 return;
             }
 
             File outFile = null;
+            FileOutputStream outStream = null;
             try {
                 if (dump != null) {
                     outFile = new File(dump);
@@ -197,9 +200,11 @@ public class IssueRunner {
                     outFile = new File(new File(outputDir), repo.getName() + ".json");
                 }
 
-                BufferedWriter out = new BufferedWriter(new FileWriter(outFile));
-                out.write(json.get());
-                out.close();
+                // Use FileOutputStream instead of BufferedWriter to prevent OutOfMemoryErrors on huge amount of data
+                outStream = new FileOutputStream(outFile);
+                OutputStreamWriter outStreamWriter = new OutputStreamWriter(outStream,"UTF-8");
+                repo.streamSerialize(outStreamWriter, issueData.get());
+                outStreamWriter.close();
             } catch (IOException e) {
                 LOG.severe("Could not write JSON to file: " + e);
             }
