@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
+import com.google.gson.stream.JsonWriter;
 import com.google.gson.reflect.TypeToken;
 import de.uni_passau.fim.processexecutor.ProcessExecutor;
 import io.gsonfire.GsonFireBuilder;
@@ -930,12 +931,47 @@ public class GitHubRepository extends Repository {
      * This method provides a convenient way to convert GitHub-related objects back to their JSON representation
      * (For now only GitHub related data and commits can be serialized)
      *
+     * Notice: This method will end up in an {@code OutOfMemoryError} if the issue data contains a very huge
+     * amount of data. To prevent this, use method {@code #streamSerialze(OutputStreamWriter, List<IssueData>)}.
+     *
      * @param obj
      *         the object to serialize
      * @return a String containing the JSON representation
+     * @see #streamSerialize(OutputStreamWriter, List<IssueData>)
      */
     public <T> String serialize(T obj) {
         return gson.toJson(obj);
+    }
+
+    /**
+     * This method provides a convenient way to convert a list of {@code IssueData} objects back to their
+     * JSON representation and write them directly to an output file using an {@code OutputStreamWriter}.
+     * (For now only GitHub related data and commits can be serialized)
+     *
+     * This method is applicable also for huge amounts of issue data (as opposed to method {@code #serialze(T obj)}),
+     * as the complete JSON string is not held in the memory but directly written to a file, using an output stream.
+     *
+     * @param out
+     *         the output stream writer which should be used to write the JSON String representation
+     * @param issueData
+     *         the list of {@code IssueData} objects to serialize
+     * @see #serialize(T)
+     */
+    public void streamSerialize(OutputStreamWriter out, List<IssueData> issueData) {
+        try {
+            JsonWriter writer = new JsonWriter(out);
+            writer.setIndent("  ");
+            writer.beginArray();
+
+            for (IssueData i : issueData) {
+                gson.toJson(i, IssueData.class, writer);
+                out.flush();
+            }
+            writer.endArray();
+            writer.close();
+        } catch (IOException e) {
+            LOG.severe("An error occurred during serialization: " + e);
+        }
     }
 
     /**
