@@ -8,38 +8,48 @@ plugins {
 version '1.0-SNAPSHOT'
 
 compileJava {
-    sourceCompatibility = '1.8'
-    targetCompatibility = '1.8'
+    sourceCompatibility = '11'
+    targetCompatibility = '11'
+    //options.compilerArgs += ['--release', '8']
+    //options.compilerArgs.addAll('--release', '8')
 }
 
 repositories {
     mavenCentral()
+    maven {
+        url 'https://gitlab.infosun.fim.uni-passau.de/api/v4/projects/253/packages/maven'
+    }
 }
 
 dependencies {
-    testCompile group: 'junit', name: 'junit', version: '4.11'
+    testImplementation group: 'junit', name: 'junit', version: '4.11'
 
     //null annotation
-    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.1'
+    implementation group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.1'
 
     // arg parser for issue runner
-    compile group: 'args4j', name: 'args4j', version: '2.33'
+    implementation group: 'args4j', name: 'args4j', version: '2.33'
 
     // better http client
-    compile 'org.apache.httpcomponents:httpclient:4.5.5'
-    compile 'org.apache.httpcomponents:fluent-hc:4.5.5'
+    implementation 'org.apache.httpcomponents:httpclient:4.5.5'
+    implementation 'org.apache.httpcomponents:fluent-hc:4.5.5'
 
-    compile group: 'commons-lang', name: 'commons-lang', version: '2.6'
+    implementation group: 'commons-lang', name: 'commons-lang', version: '2.6'
+    implementation 'commons-io:commons-io:2.6'
 
     //json
-    compile 'com.google.code.gson:gson:2.7'
-    compile 'io.gsonfire:gson-fire:1.8.0'
+    implementation 'com.google.code.gson:gson:2.7'
+    implementation 'io.gsonfire:gson-fire:1.8.0'
 
     //GitWrapper
-    compile project(':GitWrapper')
+    //implementation project(':GitWrapper')
+    implementation 'de.uni_passau.fim.seibt:gitwrapper:2022.1'
+    //maven {
+    //    url 'https://gitlab.infosun.fim.uni-passau.de/api/v4/projects/253/packages/maven'
+    //}
 
     // The tooling API need an SLF4J implementation available at runtime, replace this with any other implementation
-    runtime 'org.slf4j:slf4j-simple:1.7.21'
+    implementation 'org.slf4j:slf4j-simple:1.7.21'
 }
 
 sourceSets {
@@ -51,6 +61,8 @@ sourceSets {
 }
 
 jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
     manifest {
         attributes(
 //                'Class-Path': configurations.compile.collect { it.getName() }.join(' '),
@@ -59,7 +71,7 @@ jar {
     }
 
     from {
-        configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+        configurations.compileClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
 }
 
