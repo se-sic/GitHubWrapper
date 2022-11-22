@@ -3,6 +3,7 @@ plugins {
     id 'idea'
     id 'eclipse'
     id 'application'
+    id "com.github.hierynomus.license" version "0.16.1" // Used to ensure that licence headers are applied consistently
 }
 
 version '1.0-SNAPSHOT'
@@ -78,4 +79,10 @@ jar {
 startScripts {
     applicationName = rootProject.name
     mainClassName = "de.uni_passau.fim.issuerunner.IssueRunner"
+}
+
+license {
+    header = file('LICENSE_HEADER')
+    //strictCheck = true
+    skipExistingHeaders = true
 }
