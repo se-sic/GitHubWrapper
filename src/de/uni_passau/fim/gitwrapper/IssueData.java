@@ -39,6 +39,8 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     UserData user;
 
     @Expose(deserialize = false) State state;
+    @Expose(deserialize = false) StateReason state_reason;
+    @Expose(deserialize = false) TypeData type;
     OffsetDateTime created_at;
     @Nullable OffsetDateTime closed_at;
 
@@ -180,6 +182,15 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      */
     public State getState() {
         return state;
+    }
+
+    /**
+     * Gets the reason for the current state of the issue.
+     *
+     * @return the state reason
+     */
+    public StateReason getStateReason() {
+        return state_reason;
     }
 
     /**

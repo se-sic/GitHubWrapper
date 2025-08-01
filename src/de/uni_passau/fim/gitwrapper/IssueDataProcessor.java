@@ -375,6 +375,19 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         // fill in missing data
         result.state = State.getFromString(src.getAsJsonObject().get("state").getAsString());
 
+        JsonElement stateReasonElement = src.getAsJsonObject().get("state_reason");
+        String stateReasonValue = (stateReasonElement != null && !stateReasonElement.isJsonNull()) 
+            ? stateReasonElement.getAsString() 
+            : null;
+        result.state_reason = StateReason.getFromString(stateReasonValue);
+
+        JsonElement typeElement = src.getAsJsonObject().get("type");
+        if (typeElement != null && !typeElement.isJsonNull()) {
+            result.type = gson.fromJson(typeElement, TypeData.class);
+        } else {
+            result.type = null;
+        }
+
         if (result.getCommentsList() == null) {
             Optional<List<ReferencedLink<String>>> comments = repo.getComments(lookup);
             result.setComments(comments.orElse(Collections.emptyList()));
