@@ -44,6 +44,8 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         map.put("referenced", EventData.ReferencedEventData.class);
         map.put("merged", EventData.ReferencedEventData.class);
         map.put("closed", EventData.ReferencedEventData.class);
+        map.put("closed", EventData.StateChangedEventData.class);
+        map.put("reopened", EventData.StateChangedEventData.class);
         map.put("review_requested", EventData.RequestedReviewEventData.class);
         map.put("review_request_removed", EventData.RequestedReviewEventData.class);
         map.put("review_dismissed", EventData.DismissedReviewEventData.class);
@@ -157,5 +159,23 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
 
         @Override
         public void postSerialize(JsonElement result, EventData.AssignedEventData src, Gson gson) { }
+    }
+
+    /**
+     * Processor for state change events.
+     */
+    static class StateChangedEventProcessor implements PostProcessor<EventData.StateChangedEventData> {
+
+        @Override
+        public void postDeserialize(EventData.StateChangedEventData result, JsonElement src, Gson gson) {
+            JsonElement stateReasonElement = src.getAsJsonObject().get("state_reason");
+            String stateReasonValue = (stateReasonElement != null && !stateReasonElement.isJsonNull()) 
+            ? stateReasonElement.getAsString() 
+            : null;
+            result.state_reason = StateReason.getFromString(stateReasonValue);
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.StateChangedEventData src, Gson gson) { }
     }
 }
