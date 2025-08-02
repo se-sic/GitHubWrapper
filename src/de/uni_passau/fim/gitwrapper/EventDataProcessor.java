@@ -46,6 +46,9 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         map.put("closed", EventData.ReferencedEventData.class);
         map.put("closed", EventData.StateChangedEventData.class);
         map.put("reopened", EventData.StateChangedEventData.class);
+        map.put("issue_type_added", EventData.IssueTypeChangedEventData.class);
+        map.put("issue_type_changed", EventData.IssueTypeChangedEventData.class);
+        map.put("issue_type_removed", EventData.IssueTypeChangedEventData.class);
         map.put("review_requested", EventData.RequestedReviewEventData.class);
         map.put("review_request_removed", EventData.RequestedReviewEventData.class);
         map.put("review_dismissed", EventData.DismissedReviewEventData.class);
@@ -177,5 +180,19 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
 
         @Override
         public void postSerialize(JsonElement result, EventData.StateChangedEventData src, Gson gson) { }
+    }
+
+    /**
+     * Processor for issue type change events.
+     */
+    static class IssueTypeChangedEventProcessor implements PostProcessor<EventData.IssueTypeChangedEventData> {
+
+        @Override
+        public void postDeserialize(EventData.IssueTypeChangedEventData result, JsonElement src, Gson gson) {
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.IssueTypeChangedEventData src, Gson gson) {
+        }
     }
 }
