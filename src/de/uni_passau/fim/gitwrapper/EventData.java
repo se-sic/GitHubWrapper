@@ -214,6 +214,7 @@ public abstract class EventData {
      */
     public class IssueTypeChangedEventData extends EventData { 
 
+        @Expose(serialize = false)
         IssueTypeChangeEvent change_type;
 
         /**
