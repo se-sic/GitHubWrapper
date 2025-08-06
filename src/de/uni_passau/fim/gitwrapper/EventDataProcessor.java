@@ -49,6 +49,12 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         map.put("issue_type_added", EventData.IssueTypeChangedEventData.class);
         map.put("issue_type_changed", EventData.IssueTypeChangedEventData.class);
         map.put("issue_type_removed", EventData.IssueTypeChangedEventData.class);
+        map.put("parent_issue_added", EventData.ParentIssueChangedEventData.class);
+        map.put("parent_issue_removed", EventData.ParentIssueChangedEventData.class);
+        map.put("parent_issue_changed", EventData.ParentIssueChangedEventData.class);
+        map.put("sub_issue_added", EventData.SubIssueChangedEventData.class);
+        map.put("sub_issue_removed", EventData.SubIssueChangedEventData.class);
+        map.put("sub_issue_changed", EventData.SubIssueChangedEventData.class);
         map.put("review_requested", EventData.RequestedReviewEventData.class);
         map.put("review_request_removed", EventData.RequestedReviewEventData.class);
         map.put("review_dismissed", EventData.DismissedReviewEventData.class);
@@ -193,6 +199,34 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
 
         @Override
         public void postSerialize(JsonElement result, EventData.IssueTypeChangedEventData src, Gson gson) {
+        }
+    }
+
+    /**
+     * Processor for parent issue change events.
+     */
+    static class ParentIssueChangedEventProcessor implements PostProcessor<EventData.ParentIssueChangedEventData> {
+
+        @Override
+        public void postDeserialize(EventData.ParentIssueChangedEventData result, JsonElement src, Gson gson) {
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.ParentIssueChangedEventData src, Gson gson) {
+        }
+    }
+
+    /**
+     * Processor for sub-issue change events.
+     */
+    static class SubIssueChangedEventProcessor implements PostProcessor<EventData.SubIssueChangedEventData> {
+
+        @Override
+        public void postDeserialize(EventData.SubIssueChangedEventData result, JsonElement src, Gson gson) {
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.SubIssueChangedEventData src, Gson gson) {
         }
     }
 }

@@ -243,6 +243,8 @@ public class GitHubRepository extends Repository {
         gfb.registerPostProcessor(EventData.AssignedEventData.class, new EventDataProcessor.AssignedEventProcessor());
         gfb.registerPostProcessor(EventData.StateChangedEventData.class, new EventDataProcessor.StateChangedEventProcessor());
         gfb.registerPostProcessor(EventData.IssueTypeChangedEventData.class, new EventDataProcessor.IssueTypeChangedEventProcessor());
+        gfb.registerPostProcessor(EventData.ParentIssueChangedEventData.class, new EventDataProcessor.ParentIssueChangedEventProcessor());
+        gfb.registerPostProcessor(EventData.SubIssueChangedEventData.class, new EventDataProcessor.SubIssueChangedEventProcessor());
         gfb.registerPostProcessor(ReviewData.ReviewInitialCommentData.class, new ReviewDataProcessor.ReviewInitialCommentDataProcessor(this));
         GsonBuilder gb = gfb.createGsonBuilder();
         gb.registerTypeAdapter(Commit.class, new CommitProcessor(this, userProcessor));
