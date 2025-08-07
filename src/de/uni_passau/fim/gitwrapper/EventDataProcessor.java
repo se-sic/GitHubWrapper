@@ -45,6 +45,7 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         map.put("merged", EventData.ReferencedEventData.class);
         map.put("closed", EventData.ReferencedEventData.class);
         map.put("closed", EventData.StateChangedEventData.class);
+        map.put("connected", EventData.ConnectedEventData.class);
         map.put("reopened", EventData.StateChangedEventData.class);
         map.put("issue_type_added", EventData.IssueTypeChangedEventData.class);
         map.put("issue_type_changed", EventData.IssueTypeChangedEventData.class);
@@ -229,4 +230,18 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         public void postSerialize(JsonElement result, EventData.SubIssueChangedEventData src, Gson gson) {
         }
     }
+
+    /**
+     * Processor for connected events.
+     */
+    static class ConnectedEventProcessor implements PostProcessor<EventData.ConnectedEventData> {
+
+        @Override
+        public void postDeserialize(EventData.ConnectedEventData result, JsonElement src, Gson gson) {
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.ConnectedEventData src, Gson gson) {
+        }
+    }   
 }
