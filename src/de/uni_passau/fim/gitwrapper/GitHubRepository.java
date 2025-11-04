@@ -357,8 +357,8 @@ public class GitHubRepository extends Repository {
             }
             else timeLimit = "";
             Type finalType = type;
-            // For debugging, you may add additional parameters to the string. For example, '/issues?creator=sleo&state=all'
-            // will fetch issues created by user 'sleo' and all related issues and commits.
+            // For debugging, you may add additional parameters to the string. For example, '/issues?creator=username&state=all'
+            // will fetch issues created by the specified and all related issues and commits.
             getJSONStringFromPath("/issues?state=all" + timeLimit).map(json -> {
                 List<IssueData> data;
                 try {
