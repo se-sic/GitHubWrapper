@@ -61,7 +61,7 @@ build.gradle
 **build.gradle**
 ```groovy
 dependencies {
-    compile project(':GitHubWrapper')
+    implementation project(':GitHubWrapper')
 }
 ```
 
