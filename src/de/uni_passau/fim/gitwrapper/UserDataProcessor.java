@@ -77,8 +77,16 @@ public class UserDataProcessor implements JsonDeserializer<UserData> {
     private UserData buildAndInsertUser(String username, String url) {
         Optional<String> jsonData = repo.getJSONStringFromURL(url);
         if (!jsonData.isPresent()) {
-            LOG.warning("Could not get information about user '" + username + "'");
-            return DUMMY_USER;
+            if (username == null || username.isEmpty()) {
+                LOG.warning("Could not get information about unknown user!");
+                return DUMMY_USER;
+            } else {
+                LOG.warning("Could not get information about user '" + username + "', creating a dummy user entry.");
+                UserData dummyUser = new UserData();
+                dummyUser.username = username;
+                dummyUser.email = "";
+                return dummyUser;
+            }
         }
         JsonElement data = parser.parse(jsonData.get());
         UserData user = new UserData();
