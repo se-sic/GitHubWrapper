@@ -1,5 +1,6 @@
 /**
  * Copyright (C) 2018 Florian Heck
+ * Copyright (C) 2026 Leo Sendelbach
  *
  * This file is part of GitHubWrapper.
  *
