@@ -1,7 +1,7 @@
 /**
  * Copyright (C) 2016-2018 Florian Heck
  * Copyright (C) 2019 Thomas Bock
- * Copyright (C) 2025 Leo Sendelbach
+ * Copyright (C) 2025-2026 Leo Sendelbach
  * Copyright (C) 2025 Shiraz Jafri
  *
  * This file is part of GitHubWrapper.
@@ -60,6 +60,7 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         map.put("review_dismissed", EventData.DismissedReviewEventData.class);
         map.put("assigned", EventData.AssignedEventData.class);
         map.put("unassigned", EventData.AssignedEventData.class);
+        map.put("locked", EventData.LockedEventData.class);
     }
 
     @Override
