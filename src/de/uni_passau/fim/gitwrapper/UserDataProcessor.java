@@ -77,15 +77,18 @@ public class UserDataProcessor implements JsonDeserializer<UserData> {
      */
     private UserData buildAndInsertUser(String username, String url) {
         Optional<String> jsonData = repo.getJSONStringFromURL(url);
+        boolean guess = repo.allowGuessing();
         if (!jsonData.isPresent()) {
             if (username == null || username.isEmpty()) {
                 LOG.warning("Could not get information about unknown user!");
+                (guess ? guessedUsersByUsername : strictUsersByUsername).put(username, DUMMY_USER);
                 return DUMMY_USER;
             } else {
                 LOG.warning("Could not get information about user '" + username + "', creating a dummy user entry.");
                 UserData dummyUser = new UserData();
                 dummyUser.username = username;
                 dummyUser.email = "";
+                (guess ? guessedUsersByUsername : strictUsersByUsername).put(username, dummyUser);
                 return dummyUser;
             }
         }
@@ -106,7 +109,6 @@ public class UserDataProcessor implements JsonDeserializer<UserData> {
         }
 
         // if we want to guess for emails, look at user history
-        boolean guess = repo.allowGuessing();
         if (guess) {
             // get list of recent pushes
             Optional<String> eventsData = repo.getJSONStringFromURL(data.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));

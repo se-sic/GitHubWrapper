@@ -1,6 +1,6 @@
 /**
  * Copyright (C) 2025 Shiraz Jafri
- * Copyright (C) 2025 Leo Sendelbach
+ * Copyright (C) 2025-2026 Leo Sendelbach
  *
  * This file is part of GitHubWrapper.
  *
@@ -64,7 +64,7 @@ public enum StateReason {
             case "duplicate":
                 return DUPLICATE;
             default:
-                throw new IllegalArgumentException("Found state reason (" + string + ") that was neither 'completed'," +
+                throw new IllegalArgumentException("Found state reason (" + string + ") that was neither 'completed', " +
                                                     "'reopened', 'not_planned', nor 'duplicate'!");
         }
     }

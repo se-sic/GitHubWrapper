@@ -1,7 +1,7 @@
 /**
  * Copyright (C) 2016-2018 Florian Heck
  * Copyright (C) 2019-2020 Thomas Bock
- * Copyright (C) 2025 Leo Sendelbach
+ * Copyright (C) 2025-2026 Leo Sendelbach
  * Copyright (C) 2025 Shiraz Jafri
  *
  * This file is part of GitHubWrapper.
@@ -75,7 +75,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
         // Parse commits from referenced commits
         Stream<ReferencedLink<List<String>>> referencedCommits = issue.getEventsList().stream()
-                .filter(eventData -> eventData instanceof EventData.ReferencedEventData)
+                .filter(eventData -> eventData instanceof EventData.ReferencedEventData || eventData instanceof EventData.StateChangedEventData)
                 // filter out errors from referencing commits
                 .filter(eventData -> ((EventData.ReferencedEventData) eventData).commit != null)
                 .map(eventData -> {
@@ -268,12 +268,13 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
         // filter out everything in code block
         String[] texts = text.split("```");
-        text = "";
+        StringBuilder sb = new StringBuilder();
         for (int i = 0; i < texts.length; i++) {
             if (i % 2 == 0) {
-                text = text + texts[i];
+                sb.append(texts[i]);
             }
         }
+        text = sb.toString();
 
         Pattern sha1Pattern = Pattern.compile("([0-9a-f]{7,40})");
         Matcher matcher = sha1Pattern.matcher(text);

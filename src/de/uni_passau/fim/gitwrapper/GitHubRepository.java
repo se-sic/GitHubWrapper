@@ -2,7 +2,7 @@
  * Copyright (C) 2016-2020 Florian Heck
  * Copyright (C) 2018 Claus Hunsen
  * Copyright (C) 2019-2021 Thomas Bock
- * Copyright (C) 2025 Leo Sendelbach
+ * Copyright (C) 2025-2026 Leo Sendelbach
  * Copyright (C) 2025 Shiraz Jafri
  *
  * This file is part of GitHubWrapper.
@@ -358,7 +358,7 @@ public class GitHubRepository extends Repository {
             else timeLimit = "";
             Type finalType = type;
             // For debugging, you may add additional parameters to the string. For example, '/issues?creator=username&state=all'
-            // will fetch issues created by the specified and all related issues and commits.
+            // will fetch issues created by the specified user and all related issues and commits.
             getJSONStringFromPath("/issues?state=all" + timeLimit).map(json -> {
                 List<IssueData> data;
                 try {
@@ -1035,6 +1035,18 @@ public class GitHubRepository extends Repository {
         });
     }
 
+    /**
+     * Gets the corresponding Commit for the given sha1 hash using its URL. If the commit is not known by the local repository, a
+     * query is sent to GitHub, to confirm its existence there and additional author data is retrieved. (e.g. GitHub
+     * retains a copy, even if a force push is performed).
+     *
+     * @param hash
+     *         the sha1 hash of the Commit
+     * @param url
+     *         the URL to query for the commit data
+     * @return optionally a Commit, or an empty Optional, if neither the local repository nor GitHub have a reference
+     * to a Commit with the given hash
+     */
     Optional<GitHubCommit> getGithubCommitUrl(String hash, String url) {
         if (offline.get()) {
             return Optional.of(getGHCommitUnchecked(DummyCommit.DUMMY_COMMIT_ID));

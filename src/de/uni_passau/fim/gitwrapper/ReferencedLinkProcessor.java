@@ -1,7 +1,7 @@
 /**
  * Copyright (C) 2018 Florian Heck
  * Copyright (C) 2019 Thomas Bock
- * Copyright (C) 2025 Leo Sendelbach
+ * Copyright (C) 2025-2026 Leo Sendelbach
  *
  * This file is part of GitHubWrapper.
  *
@@ -118,6 +118,7 @@ public class ReferencedLinkProcessor implements JsonDeserializer<ReferencedLink>
             case "commitAddedToPullRequest":
             case "commitMentionedInIssue":
             case "commitReferencesIssue":
+            case "commitReferencesIssueExternal":
                 result = new ReferencedLink<GitHubCommit>();
                 result.target = context.deserialize(json.getAsJsonObject().get("commit"), new TypeToken<GitHubCommit>() {}.getType());
 
