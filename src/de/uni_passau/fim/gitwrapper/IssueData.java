@@ -199,10 +199,10 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     }
 
     /**
-    * Gets the type of the issue.
-    *
-    * @return the type
-    */
+     * Gets the type of the issue.
+     *
+     * @return the type
+     */
     public TypeData getType() {
         return type;
     }

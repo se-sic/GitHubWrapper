@@ -75,7 +75,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
         // Parse commits from referenced commits
         Stream<ReferencedLink<List<String>>> referencedCommits = issue.getEventsList().stream()
-                .filter(eventData -> eventData instanceof EventData.ReferencedEventData || eventData instanceof EventData.StateChangedEventData)
+                .filter(eventData -> eventData instanceof EventData.ReferencedEventData)
                 // filter out errors from referencing commits
                 .filter(eventData -> ((EventData.ReferencedEventData) eventData).commit != null)
                 .map(eventData -> {
@@ -266,15 +266,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
             return Collections.emptyList();
         }
 
-        // filter out everything in code block
-        String[] texts = text.split("```");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < texts.length; i++) {
-            if (i % 2 == 0) {
-                sb.append(texts[i]);
-            }
-        }
-        text = sb.toString();
+        text = splitCodeBlocks(text);
 
         Pattern sha1Pattern = Pattern.compile("([0-9a-f]{7,40})");
         Matcher matcher = sha1Pattern.matcher(text);
@@ -303,15 +295,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         }
         Pattern hashtagPattern;
 
-        // filter out everything in code block
-        String[] texts = text.split("```");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < texts.length; i++) {
-            if (i % 2 == 0) {
-                sb.append(texts[i]);
-            }
-        }
-        text = sb.toString();
+        text = splitCodeBlocks(text);
 
         if (onlyInSameRepo) {
             String repoName = repo.getRepoName();
@@ -350,6 +334,24 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         }
 
         return hashtags;
+    }
+
+    /**
+     * Splits text into code and non-code blocks and only returns the non-code blocks concatenated.
+     *
+     * @param text
+     *          the text to split
+     * @return the text without code blocks
+     */
+    private String splitCodeBlocks(String text) {
+        String[] texts = text.split("```");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < texts.length; i++) {
+            if (i % 2 == 0) {
+                sb.append(texts[i]);
+            }
+        }
+        return sb.toString();
     }
 
     @Override

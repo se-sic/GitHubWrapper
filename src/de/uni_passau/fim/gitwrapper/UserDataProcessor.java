@@ -81,7 +81,6 @@ public class UserDataProcessor implements JsonDeserializer<UserData> {
         if (!jsonData.isPresent()) {
             if (username == null || username.isEmpty()) {
                 LOG.warning("Could not get information about unknown user!");
-                (guess ? guessedUsersByUsername : strictUsersByUsername).put(username, DUMMY_USER);
                 return DUMMY_USER;
             } else {
                 LOG.warning("Could not get information about user '" + username + "', creating a dummy user entry.");
