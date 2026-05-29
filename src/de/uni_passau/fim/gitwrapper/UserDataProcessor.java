@@ -1,5 +1,6 @@
 /**
  * Copyright (C) 2018 Florian Heck
+ * Copyright (C) 2026 Leo Sendelbach
  *
  * This file is part of GitHubWrapper.
  *
@@ -76,9 +77,19 @@ public class UserDataProcessor implements JsonDeserializer<UserData> {
      */
     private UserData buildAndInsertUser(String username, String url) {
         Optional<String> jsonData = repo.getJSONStringFromURL(url);
+        boolean guess = repo.allowGuessing();
         if (!jsonData.isPresent()) {
-            LOG.warning("Could not get information about user '" + username + "'");
-            return DUMMY_USER;
+            if (username == null || username.isEmpty()) {
+                LOG.warning("Could not get information about unknown user!");
+                return DUMMY_USER;
+            } else {
+                LOG.warning("Could not get information about user '" + username + "', creating a dummy user entry.");
+                UserData dummyUser = new UserData();
+                dummyUser.username = username;
+                dummyUser.email = "";
+                (guess ? guessedUsersByUsername : strictUsersByUsername).put(username, dummyUser);
+                return dummyUser;
+            }
         }
         JsonElement data = parser.parse(jsonData.get());
         UserData user = new UserData();
@@ -97,7 +108,6 @@ public class UserDataProcessor implements JsonDeserializer<UserData> {
         }
 
         // if we want to guess for emails, look at user history
-        boolean guess = repo.allowGuessing();
         if (guess) {
             // get list of recent pushes
             Optional<String> eventsData = repo.getJSONStringFromURL(data.getAsJsonObject().get("events_url").getAsString().replaceAll("\\{.*}$", ""));

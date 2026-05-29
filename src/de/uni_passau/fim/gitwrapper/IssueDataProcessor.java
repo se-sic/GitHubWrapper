@@ -1,7 +1,8 @@
 /**
  * Copyright (C) 2016-2018 Florian Heck
  * Copyright (C) 2019-2020 Thomas Bock
- * Copyright (C) 2025 Leo Sendelbach
+ * Copyright (C) 2025-2026 Leo Sendelbach
+ * Copyright (C) 2025 Shiraz Jafri
  *
  * This file is part of GitHubWrapper.
  *
@@ -232,6 +233,28 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
     }
 
     /**
+     * Parse subissues
+     *
+     * @param issue
+     *         the Issue to analyze
+     * @param gson
+     *         the Gson used to deserialize
+     * @return a list of all Issue numbers of sub-issues
+     */
+    List<Integer> parseSubIssues(IssueData issue, Gson gson) {
+
+        Optional<String> subIssueJson = repo.getJSONStringFromURL(issueBaseUrl + issue.number + "/sub_issues");
+
+        if (subIssueJson.isEmpty()) {
+            return new ArrayList<Integer>();
+        }
+        ArrayList<JsonElement> list = gson.fromJson(subIssueJson.get(), new TypeToken<ArrayList<JsonElement>>() {}.getType());
+        return list.stream().map(s -> (((IssueData) gson.fromJson(s, new TypeToken<IssueDataCached>() {}.getType())).getNumber()))
+                                       .filter(Objects::nonNull)
+                                       .collect(Collectors.toList());
+    }
+
+    /**
      * Extracts theoretically valid commit hashes from text.
      *
      * @param text
@@ -242,7 +265,10 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         if (text == null) {
             return Collections.emptyList();
         }
-        Pattern sha1Pattern = Pattern.compile("([0-9a-f]{5,40})");
+
+        text = splitCodeBlocks(text);
+
+        Pattern sha1Pattern = Pattern.compile("([0-9a-f]{7,40})");
         Matcher matcher = sha1Pattern.matcher(text);
 
         List<String> sha1s = new ArrayList<>();
@@ -269,15 +295,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         }
         Pattern hashtagPattern;
 
-        // filter out everything in code block
-        String[] texts = text.split("```");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < texts.length; i++) {
-            if (i % 2 == 0) {
-                sb.append(texts[i]);
-            }
-        }
-        text = sb.toString();
+        text = splitCodeBlocks(text);
 
         if (onlyInSameRepo) {
             String repoName = repo.getRepoName();
@@ -316,6 +334,24 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         }
 
         return hashtags;
+    }
+
+    /**
+     * Splits text into code and non-code blocks and only returns the non-code blocks concatenated.
+     *
+     * @param text
+     *          the text to split
+     * @return the text without code blocks
+     */
+    private String splitCodeBlocks(String text) {
+        String[] texts = text.split("```");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < texts.length; i++) {
+            if (i % 2 == 0) {
+                sb.append(texts[i]);
+            }
+        }
+        return sb.toString();
     }
 
     @Override
@@ -392,6 +428,13 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         // fill in missing data
         result.state = State.getFromString(src.getAsJsonObject().get("state").getAsString());
 
+        JsonElement typeElement = src.getAsJsonObject().get("type");
+        if (typeElement != null && !typeElement.isJsonNull()) {
+            result.type = gson.fromJson(typeElement, TypeData.class);
+        } else {
+            result.type = null;
+        }
+
         if (result.getCommentsList() == null) {
             Optional<List<ReferencedLink<String>>> comments = repo.getComments(lookup);
             result.setComments(comments.orElse(Collections.emptyList()));
@@ -442,6 +485,10 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
 
         if (result.relatedIssues == null) {
             result.setRelatedIssues(parseIssues(result, gson));
+        }
+
+        if (result.getSubIssues() == null) {
+            result.setSubIssues(parseSubIssues(result, gson));
         }
 
         workingQueue.remove(result.number);

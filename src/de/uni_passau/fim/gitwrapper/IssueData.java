@@ -1,6 +1,8 @@
 /**
  * Copyright (C) 2016-2018 Florian Heck
  * Copyright (C) 2019 Thomas Bock
+ * Copyright (C) 2025-2026 Leo Sendelbach
+ * Copyright (C) 2025 Shiraz Jafri
  *
  * This file is part of GitHubWrapper.
  *
@@ -39,6 +41,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     UserData user;
 
     @Expose(deserialize = false) State state;
+    @Expose(deserialize = false) TypeData type;
     OffsetDateTime created_at;
     @Nullable OffsetDateTime closed_at;
 
@@ -51,6 +54,7 @@ public class IssueData implements GitHubRepository.IssueDataCached {
     private List<ReviewData> reviewsList;
     private List<ReferencedLink<GitHubCommit>> relatedCommits;
     List<ReferencedLink<Integer>> relatedIssues;
+    private List<Integer> subIssues;
 
     transient GitHubRepository repo;
     private transient boolean frozen;
@@ -98,6 +102,16 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      */
     void setRelatedCommits(List<ReferencedLink<GitHubCommit>> commits) {
         relatedCommits = commits;
+    }
+
+    /**
+     * Sets a list of sub-issues to this Issue.
+     *
+     * @param issues
+     *         the list of issue numbers
+     */
+    void setSubIssues(List<Integer> issues) {
+        subIssues = issues;
     }
 
     /**
@@ -151,6 +165,8 @@ public class IssueData implements GitHubRepository.IssueDataCached {
                 // Remove invalid commits before they cause problems
                 .filter(c -> c != null && c.getTarget() != null && c.getTarget().getAuthorTime() != null)
                 .distinct().sorted(compare).collect(Collectors.toList()));
+        subIssues = Collections.unmodifiableList(subIssues.stream()
+                .filter(Objects::nonNull).distinct().sorted().collect(Collectors.toList()));
 
         frozen = true;
     }
@@ -180,6 +196,15 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      */
     public State getState() {
         return state;
+    }
+
+    /**
+     * Gets the type of the issue.
+     *
+     * @return the type
+     */
+    public TypeData getType() {
+        return type;
     }
 
     /**
@@ -274,6 +299,15 @@ public class IssueData implements GitHubRepository.IssueDataCached {
      */
     public List<ReferencedLink<GitHubCommit>> getRelatedCommits() {
         return relatedCommits;
+    }
+
+    /**
+     * Gets a List of all sub-issues that belong to the Issue.
+     *
+     * @return a List of sub-issues in form of a list containing their issue numbers
+     */
+    public List<Integer> getSubIssues() {
+        return subIssues;
     }
 
     /**

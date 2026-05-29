@@ -35,6 +35,7 @@ public class ReviewCommentData {
     @SerializedName(value = "file", alternate = {"path"})
     String file;
     String body;
+    boolean suggestion = false;
 
     public ReviewCommentData() {
     }
@@ -79,5 +80,12 @@ public class ReviewCommentData {
      */
     public String getBody() {
         return body;
+    }
+
+    /**
+     * If the comment contains a suggestion
+     */
+    public boolean containsSuggestion() {
+        return suggestion;
     }
 }

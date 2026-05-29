@@ -1,7 +1,8 @@
 /**
  * Copyright (C) 2016-2018 Florian Heck
  * Copyright (C) 2019 Thomas Bock
- * Copyright (C) 2025 Leo Sendelbach
+ * Copyright (C) 2025-2026 Leo Sendelbach
+ * Copyright (C) 2025 Shiraz Jafri
  *
  * This file is part of GitHubWrapper.
  *
@@ -44,12 +45,22 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         map.put("unlabeled", EventData.LabeledEventData.class);
         map.put("referenced", EventData.ReferencedEventData.class);
         map.put("merged", EventData.ReferencedEventData.class);
-        map.put("closed", EventData.ReferencedEventData.class);
+        map.put("closed", EventData.StateChangedEventData.class);
+        map.put("reopened", EventData.StateChangedEventData.class);
+        map.put("connected", EventData.ConnectedEventData.class);
+        map.put("issue_type_added", EventData.IssueTypeChangedEventData.class);
+        map.put("issue_type_changed", EventData.IssueTypeChangedEventData.class);
+        map.put("issue_type_removed", EventData.IssueTypeChangedEventData.class);
+        map.put("parent_issue_added", EventData.ParentIssueChangedEventData.class);
+        map.put("parent_issue_removed", EventData.ParentIssueChangedEventData.class);
+        map.put("sub_issue_added", EventData.SubIssueChangedEventData.class);
+        map.put("sub_issue_removed", EventData.SubIssueChangedEventData.class);
         map.put("review_requested", EventData.RequestedReviewEventData.class);
         map.put("review_request_removed", EventData.RequestedReviewEventData.class);
         map.put("review_dismissed", EventData.DismissedReviewEventData.class);
         map.put("assigned", EventData.AssignedEventData.class);
         map.put("unassigned", EventData.AssignedEventData.class);
+        map.put("locked", EventData.LockedEventData.class);
     }
 
     @Override
@@ -163,4 +174,76 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
         @Override
         public void postSerialize(JsonElement result, EventData.AssignedEventData src, Gson gson) { }
     }
+
+    /**
+     * Processor for state change events.
+     */
+    static class StateChangedEventProcessor implements PostProcessor<EventData.StateChangedEventData> {
+
+        private GitHubRepository repo;
+
+        /**
+         * Creates a new EventDataProcessor for the given repo.
+         *
+         * @param repo
+         *         the repo
+         */
+        StateChangedEventProcessor(GitHubRepository repo) {
+            this.repo = repo;
+        }
+
+        @Override
+        public void postDeserialize(EventData.StateChangedEventData result, JsonElement src, Gson gson) {
+            JsonElement stateReasonElement = src.getAsJsonObject().get("state_reason");
+            String stateReasonValue = (stateReasonElement != null && !stateReasonElement.isJsonNull()) 
+            ? stateReasonElement.getAsString() 
+            : null;
+            result.state_reason = StateReason.getFromString(stateReasonValue);
+
+            JsonElement hash = src.getAsJsonObject().get("commit_id");
+            if (hash.isJsonNull()) {
+                return;
+            }
+
+            result.commit = repo.getGithubCommit(hash.getAsString()).orElseGet(() -> {
+                LOG.warning("Found commit unknown to GitHub and local git repo: " + hash + " Retry using url...");
+                JsonElement url = src.getAsJsonObject().get("commit_url");
+                return repo.getGithubCommitUrl(hash.getAsString(), url.getAsString()).orElseGet(() -> {
+                    LOG.warning("Could not find commit: " + hash);
+                    return null;
+                });
+            });
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.StateChangedEventData src, Gson gson) { }
+    }
+
+    /**
+     * Processor for issue type change events.
+     */
+    static class IssueTypeChangedEventProcessor implements PostProcessor<EventData.IssueTypeChangedEventData> {
+
+        @Override
+        public void postDeserialize(EventData.IssueTypeChangedEventData result, JsonElement src, Gson gson) {
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.IssueTypeChangedEventData src, Gson gson) {
+        }
+    }
+
+    /**
+     * Processor for connected events.
+     */
+    static class ConnectedEventProcessor implements PostProcessor<EventData.ConnectedEventData> {
+
+        @Override
+        public void postDeserialize(EventData.ConnectedEventData result, JsonElement src, Gson gson) {
+        }
+
+        @Override
+        public void postSerialize(JsonElement result, EventData.ConnectedEventData src, Gson gson) {
+        }
+    }   
 }
