@@ -1,6 +1,7 @@
 /**
  * Copyright (C) 2016-2018 Florian Heck
  * Copyright (C) 2019 Thomas Bock
+ * Copyright (C) 2025 Leo Sendelbach
  *
  * This file is part of GitHubWrapper.
  *
@@ -86,8 +87,12 @@ class EventDataProcessor implements JsonDeserializer<EventData>, JsonSerializer<
             }
 
             result.commit = repo.getGithubCommit(hash.getAsString()).orElseGet(() -> {
-                LOG.warning("Found commit unknown to GitHub and local git repo: " + hash);
-                return null;
+                LOG.warning("Found commit unknown to GitHub and local git repo: " + hash + " Retry using url...");
+                JsonElement url = src.getAsJsonObject().get("commit_url");
+                return repo.getGithubCommitUrl(hash.getAsString(), url.getAsString()).orElseGet(() -> {
+                    LOG.warning("Could not find commit: " + hash);
+                    return null;
+                });
             });
         }
 

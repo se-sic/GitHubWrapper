@@ -1,6 +1,7 @@
 /**
  * Copyright (C) 2016-2018 Florian Heck
  * Copyright (C) 2019-2020 Thomas Bock
+ * Copyright (C) 2025 Leo Sendelbach
  *
  * This file is part of GitHubWrapper.
  *
@@ -76,7 +77,13 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
                 .filter(eventData -> eventData instanceof EventData.ReferencedEventData)
                 // filter out errors from referencing commits
                 .filter(eventData -> ((EventData.ReferencedEventData) eventData).commit != null)
-                .map(eventData -> new ReferencedLink<>(Collections.singletonList(((EventData.ReferencedEventData) eventData).commit.getId()), eventData.user, eventData.created_at, "commitReferencesIssue"));
+                .map(eventData -> {
+                    if (((GitHubCommit) ((EventData.ReferencedEventData) eventData).commit).isExternal()) {
+                        return new ReferencedLink<>(Collections.singletonList(((EventData.ReferencedEventData) eventData).commit.getId()), eventData.user, eventData.created_at, "commitReferencesIssueExternal");
+                    } else {
+                        return new ReferencedLink<>(Collections.singletonList(((EventData.ReferencedEventData) eventData).commit.getId()), eventData.user, eventData.created_at, "commitReferencesIssue");
+                    }
+                });
 
         // Parse commits from reviews and reviews' comments
         if (issue.isPullRequest()) {
@@ -262,6 +269,16 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
         }
         Pattern hashtagPattern;
 
+        // filter out everything in code block
+        String[] texts = text.split("```");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < texts.length; i++) {
+            if (i % 2 == 0) {
+                sb.append(texts[i]);
+            }
+        }
+        text = sb.toString();
+
         if (onlyInSameRepo) {
             String repoName = repo.getRepoName();
             String repoUser = repo.getRepoUser();
@@ -379,6 +396,7 @@ public class IssueDataProcessor implements JsonDeserializer<IssueDataCached>, Po
             Optional<List<ReferencedLink<String>>> comments = repo.getComments(lookup);
             result.setComments(comments.orElse(Collections.emptyList()));
         }
+
         if (result.getEventsList() == null) {
             Optional<List<EventData>> events = repo.getEvents(lookup);
             result.setEvents(events.orElse(Collections.emptyList()));

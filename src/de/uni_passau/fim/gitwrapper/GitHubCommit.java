@@ -1,5 +1,6 @@
 /**
  * Copyright (C) 2019 Thomas Bock
+ * Copyright (C) 2025 Leo Sendelbach
  *
  * This file is part of GitHubWrapper.
  *
@@ -26,6 +27,7 @@ public class GitHubCommit extends Commit {
     private String authorUsername;
     private String committerUsername;
     private boolean addedToPullRequest = false;
+    private boolean external = false;
 
     /**
      * Constructs a new {@link GitHubCommit} with the given <code>id</code> made in the <code>repo</code>.
@@ -119,4 +121,23 @@ public class GitHubCommit extends Commit {
     void setAddedToPullRequest(boolean added) {
         this.addedToPullRequest = added;
     }
+
+    /**
+     * Returns whether this commit is an external commit.
+     * 
+     * @return whether this commit is an external commit
+     */
+    boolean isExternal() {
+        return this.external;
+    }
+
+    /**
+     * Sets whether this commit is an external commit
+     * 
+     * @param external this commit is an external commit
+     */
+    void setExternal(boolean external) {
+        this.external = external;
+    }
+    
 }

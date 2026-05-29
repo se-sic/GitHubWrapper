@@ -2,6 +2,7 @@
  * Copyright (C) 2016-2020 Florian Heck
  * Copyright (C) 2018 Claus Hunsen
  * Copyright (C) 2019-2021 Thomas Bock
+ * Copyright (C) 2025 Leo Sendelbach
  *
  * This file is part of GitHubWrapper.
  *
@@ -352,6 +353,8 @@ public class GitHubRepository extends Repository {
             }
             else timeLimit = "";
             Type finalType = type;
+            // For debugging, you may add additional parameters to the string. For example, '/issues?creator=sleo&state=all'
+            // will fetch issues created by user 'sleo' and all related issues and commits.
             getJSONStringFromPath("/issues?state=all" + timeLimit).map(json -> {
                 List<IssueData> data;
                 try {
@@ -367,7 +370,7 @@ public class GitHubRepository extends Repository {
                     threadPool.submit(() -> data.parallelStream().forEach(IssueData::freeze));
 
                 } catch (JsonSyntaxException e) {
-                    LOG.warning("Encountered invalid JSON: " + json);
+                    LOG.warning("Encountered invalid JSON: " + json + "\n\n" + e.getMessage() + "\n\n" + e);
                     return null;
                 }
                 return data;
@@ -1026,6 +1029,38 @@ public class GitHubRepository extends Repository {
                 }
             }
         });
+    }
+
+    Optional<GitHubCommit> getGithubCommitUrl(String hash, String url) {
+        if (offline.get()) {
+            return Optional.of(getGHCommitUnchecked(DummyCommit.DUMMY_COMMIT_ID));
+        } else {
+            try {
+                Optional<GitHubCommit> res = getJSONStringFromURL(url).map(commitInfo ->
+                    gson.fromJson(commitInfo, new TypeToken<GitHubCommit>() {}.getType()));
+                checkedHashes.put(hash, res);
+                if (res.isPresent()) {
+                    res.get().setExternal(true);
+                }
+                return res;
+            } catch (JsonSyntaxException e)  {
+                /* For whatever reason, the JSON String is malformed, perhaps due to ill-encoded characters
+                 * in patches within the files element of the JSON String.
+                 * Due to that, get the JSON String again and remove the content of the files element of the
+                 * JSON String, as it is not needed for further processing.
+                 */
+                LOG.info("Malformed JSON String when querying data for commit " + url + ". Neglect files element.");
+                String jsonStringFromURL = getJSONStringFromURL(url).get();
+                jsonStringFromURL = StringUtils.substringBefore(jsonStringFromURL, "\"files\":[");
+                jsonStringFromURL = jsonStringFromURL + "\"files\":[]}";
+                Optional<GitHubCommit> res = Optional.of(gson.fromJson(jsonStringFromURL, new TypeToken<GitHubCommit>() {}.getType()));
+                checkedHashes.put(hash, res);
+                if (res.isPresent()) {
+                    res.get().setExternal(true);
+                }
+                return res;
+            }
+        }
     }
 
     /**

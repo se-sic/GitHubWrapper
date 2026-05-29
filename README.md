@@ -91,3 +91,19 @@ repo.getIssues(false).ifPresent(issueData -> issueData.forEach(issue -> {
         System.out.println(comment.user.username + ": " + comment.body));
 }));
 ```
+
+### Further data processing
+
+The data extracted by this tool can be further processed, for example using the `run-issues.py` script from the tool [`codeface-extraction`](https://github.com/se-sic/codeface-extraction). This organizes and unifies the issue data into a single csv-like .list file. It also allows for synchronization with data from other data extraction tools, such as `codeface`.
+
+### `referenced` events
+
+`referenced` events are events generated in an issue if a commit references that issue in its commit message. The intended behavior is that the event is present in the issue's event data, and the commit is again present in the related commits of the issue. This does not work if it is not possible to fetch that commit. In this case, the event still exists, but it contains a link to a commit that the api cannot resolve, meaning that no data about the commit can be accessed.
+Known causes of this include:
+
+- a commit was rebased and changed/removed
+- an external repository was deleted
+- the commit's branch was deleted
+
+Note that the commit might still be reachable until the automatic garbage collection has removed it from the remote repository.
+In itself, this is not problematic. However, when further processing the data using `codeface-extraction`, this may lead to these `referenced` events being present in the final data, even though they should be filtered out as part of the issue processing.
